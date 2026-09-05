@@ -75,4 +75,28 @@ class VoiceBackendTest {
         assertNotNull(bin)
         assertTrue(bin.contains("whisper"))
     }
+
+    @Test
+    fun `test cleanWhisperOutput strips initialization logs and decodes cleanly`() {
+        val engine = su.kamil.dev.golos.voice.engine.WhisperCppEngine(modelPath = "/fake/model.bin")
+        val rawInput = "loadload_backend: loaded CPU backend from /home/thegod/.cache/golos-ai/bin/libggml-cpu-icelake.so read_audio_data: reading audio data from '/tmp/golos_audio_10051352338310894459.wav' ... read_audio_data: trying to decode with miniaudio Hello Elias, this is my test of text speech."
+
+        val cleaned = engine.cleanWhisperOutput(rawInput)
+        assertEquals("Hello Elias, this is my test of text speech.", cleaned)
+    }
+
+    @Test
+    fun `test cleanWhisperOutput strips timestamps and system info lines`() {
+        val engine = su.kamil.dev.golos.voice.engine.WhisperCppEngine(modelPath = "/fake/model.bin")
+        val rawInput = """
+            system_info: n_threads = 4 / 8 | AVX = 1 | AVX2 = 1 |
+            main: processing 'audio.wav' (16000 samples, 1.0 sec)
+            [00:00:00.000 --> 00:00:02.500]  This is a clean voice test.
+            [BLANK_AUDIO]
+            whisper_print_timings:     load time =   120.45 ms
+        """.trimIndent()
+
+        val cleaned = engine.cleanWhisperOutput(rawInput)
+        assertEquals("This is a clean voice test.", cleaned)
+    }
 }

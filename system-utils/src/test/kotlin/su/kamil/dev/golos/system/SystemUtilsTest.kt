@@ -68,4 +68,14 @@ class SystemUtilsTest {
         val res = injector.injectText("", InjectionConfig(mode = InsertionMode.DIRECT_TYPING, copyToClipboard = false))
         assertTrue(res.isSuccess)
     }
+
+    @Test
+    fun `test text injector handles text with punctuation and whitespace`() {
+        val injector = ActiveWindowTextInjector(pasteDelayMs = 10)
+        val res = injector.injectText(
+            "Hello, world! Direct typing & test: 123.",
+            InjectionConfig(mode = InsertionMode.DIRECT_TYPING, copyToClipboard = false)
+        )
+        assertTrue(res.isSuccess)
+    }
 }

@@ -1,6 +1,7 @@
 package su.kamil.dev.golos.voice.engine
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import su.kamil.dev.golos.core.model.AudioChunk
@@ -60,7 +61,8 @@ class WhisperCppEngine(
                 "-f", tempWav.absolutePath,
                 "-t", threads.toString(),
                 "-l", language,
-                "--no-timestamps"
+                "--no-timestamps",
+                "--no-prints"
             )
 
             if (device == InferenceDevice.CPU) {
@@ -73,7 +75,7 @@ class WhisperCppEngine(
 
             val process = try {
                 ProcessBuilder(cmd)
-                    .redirectErrorStream(true)
+                    .redirectErrorStream(false)
                     .start()
             } catch (e: Exception) {
                 logger.error("Failed to start whisper-cli process at path '{}'", resolvedBin, e)
@@ -85,14 +87,26 @@ class WhisperCppEngine(
                 )
             }
 
-            val output = process.inputStream.bufferedReader().readText()
+            val stdoutDeferred = async(Dispatchers.IO) {
+                process.inputStream.bufferedReader().readText()
+            }
+            val stderrDeferred = async(Dispatchers.IO) {
+                process.errorStream.bufferedReader().readText()
+            }
+
             val finished = process.waitFor(30, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
                 throw IllegalStateException("Whisper process timed out after 30 seconds")
             }
 
-            val cleanedText = cleanWhisperOutput(output)
+            val rawOutput = stdoutDeferred.await()
+            val rawStderr = stderrDeferred.await()
+            if (rawStderr.isNotBlank()) {
+                logger.debug("whisper-cli stderr: {}", rawStderr)
+            }
+
+            val cleanedText = cleanWhisperOutput(rawOutput)
             val duration = System.currentTimeMillis() - startTime
 
             TranscriptionResult(
@@ -106,16 +120,30 @@ class WhisperCppEngine(
         }
     }
 
-    private fun cleanWhisperOutput(raw: String): String {
+    internal fun cleanWhisperOutput(raw: String): String {
+        val timestampRegex = Regex("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s*-->\\s*\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]")
+
         return raw.lines()
-            .map { it.trim() }
+            .map { line ->
+                var l = line.replace(timestampRegex, "").trim()
+                if (l.contains("miniaudio")) {
+                    l = l.substringAfter("miniaudio").trim()
+                }
+                l
+            }
             .filter { line ->
                 line.isNotEmpty() &&
                         !line.startsWith("whisper_") &&
                         !line.startsWith("system_info:") &&
                         !line.startsWith("main:") &&
                         !line.startsWith("output_") &&
-                        !line.contains("ggml_")
+                        !line.startsWith("load_backend:") &&
+                        !line.startsWith("loadload_backend:") &&
+                        !line.startsWith("read_audio_data:") &&
+                        !line.contains("ggml_") &&
+                        !line.contains("ggml-") &&
+                        !line.equals("[BLANK_AUDIO]", ignoreCase = true) &&
+                        !line.equals("[START]", ignoreCase = true)
             }
             .joinToString(" ")
             .trim()

@@ -72,6 +72,11 @@ class ActiveWindowTextInjector(
             return@runCatching
         }
 
+        if (java.awt.GraphicsEnvironment.isHeadless()) {
+            logger.debug("Headless environment detected; skipping hardware keystroke injection.")
+            return@runCatching
+        }
+
         val hasInputField = isInputFieldFocused()
         logger.info("Injecting text (length: {}, mode: {}, fieldFocused: {}, copyToClipboard: {})",
             text.length, config.mode, hasInputField, config.copyToClipboard
@@ -176,27 +181,31 @@ class ActiveWindowTextInjector(
         return try {
             val shiftKeycode = x11.XKeysymToKeycode(display, x11.XStringToKeysym("Shift_L")).toInt() and 0xFF
 
+            // PHASE 1: PRE-VALIDATION (All-or-Nothing)
+            // Verify that every single character can be resolved to a valid hardware keycode BEFORE sending any key events.
+            // This prevents typing a partial word and then aborting to paste, which would cause word duplication.
+            val keycodes = ArrayList<Int>(text.length)
             for (ch in text) {
-                when (ch) {
-                    ' ' -> sendXTestKey(xtst, display, x11.XKeysymToKeycode(display, x11.XStringToKeysym("space")).toInt() and 0xFF)
-                    '\n' -> sendXTestKey(xtst, display, x11.XKeysymToKeycode(display, x11.XStringToKeysym("Return")).toInt() and 0xFF)
-                    '\t' -> sendXTestKey(xtst, display, x11.XKeysymToKeycode(display, x11.XStringToKeysym("Tab")).toInt() and 0xFF)
-                    else -> {
-                        val sym = x11.XStringToKeysym(ch.toString())
-                        if (sym == 0L) return false
-                        val code = x11.XKeysymToKeycode(display, sym).toInt() and 0xFF
-                        if (code == 0) return false
+                val code = resolveAsciiKeycode(x11, display, ch)
+                if (code == 0) {
+                    logger.debug("Cannot resolve X11 keycode for character '{}' (0x{}); aborting direct typing before sending any keystrokes.", ch, Integer.toHexString(ch.code))
+                    return false
+                }
+                keycodes.add(code)
+            }
 
-                        val needsShift = ch.isUpperCase() || "!@#$%^&*()_+{}|:\"<>?~".contains(ch)
-                        if (needsShift) {
-                            xtst.XTestFakeKeyEvent(display, shiftKeycode, true, 0)
-                        }
-                        xtst.XTestFakeKeyEvent(display, code, true, 0)
-                        xtst.XTestFakeKeyEvent(display, code, false, 0)
-                        if (needsShift) {
-                            xtst.XTestFakeKeyEvent(display, shiftKeycode, false, 0)
-                        }
-                    }
+            // PHASE 2: ATOMIC TYPING
+            for (i in text.indices) {
+                val ch = text[i]
+                val code = keycodes[i]
+                val needsShift = ch.isUpperCase() || "!@#$%^&*()_+{}|:\"<>?~".contains(ch)
+                if (needsShift && shiftKeycode != 0) {
+                    xtst.XTestFakeKeyEvent(display, shiftKeycode, true, 0)
+                }
+                xtst.XTestFakeKeyEvent(display, code, true, 0)
+                xtst.XTestFakeKeyEvent(display, code, false, 0)
+                if (needsShift && shiftKeycode != 0) {
+                    xtst.XTestFakeKeyEvent(display, shiftKeycode, false, 0)
                 }
             }
             x11.XFlush(display)
@@ -207,6 +216,20 @@ class ActiveWindowTextInjector(
         } finally {
             x11.XCloseDisplay(display)
         }
+    }
+
+    private fun resolveAsciiKeycode(x11: X11Lib, display: Pointer, ch: Char): Int {
+        val keysym = when (ch) {
+            ' ' -> 0x0020L
+            '\n' -> x11.XStringToKeysym("Return").takeIf { it != 0L } ?: 0xFF0DL
+            '\t' -> x11.XStringToKeysym("Tab").takeIf { it != 0L } ?: 0xFF09L
+            else -> {
+                if (ch.code in 32..126) ch.code.toLong()
+                else 0L
+            }
+        }
+        if (keysym == 0L) return 0
+        return x11.XKeysymToKeycode(display, keysym).toInt() and 0xFF
     }
 
     private fun sendXTestKey(xtst: XtstLib, display: Pointer, keycode: Int) {
