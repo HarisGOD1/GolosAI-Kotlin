@@ -65,6 +65,9 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
             }
 
             try {
+                // Install a non-fatal error handler to ignore BadAccess if a modifier or key is grabbed by another client
+                x11.XSetErrorHandler { _, _ -> 0 }
+
                 val root = x11.XDefaultRootWindow(display)
 
                 // Resolve keycode: try exact, lowercase, uppercase
@@ -106,25 +109,29 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                 }
 
                 for (mask in masksToGrab) {
-                    x11.XGrabKey(display, keycode, mask, root, false, 1, 1)
+                    x11.XGrabKey(display, keycode, mask, root, 0, 1, 1)
                 }
-                logger.info("Registered global hotkey '{}' (keycode {}, modifiers 0x{}) on X11",
+                x11.XFlush(display)
+                x11.XSync(display, false)
+
+                logger.info("Registered global hotkey '{}' (keycode {}, modifiers 0x{}) on X11 root window",
                     config.displayText, keycode, Integer.toHexString(baseModifier)
                 )
 
                 val eventMemory = Memory(256)
 
                 while (isHookActive.get()) {
-                    x11.XNextEvent(display, eventMemory)
-                    val eventType = eventMemory.getInt(0)
+                    if (x11.XPending(display) > 0) {
+                        x11.XNextEvent(display, eventMemory)
+                        val eventType = eventMemory.getInt(0)
 
-                    when (eventType) {
-                        2 -> { // KeyPress
-                            // Cancel any pending debounced release
-                            synchronized(this) {
-                                pendingReleaseJob?.cancel(false)
-                                pendingReleaseJob = null
-                            }
+                        when (eventType) {
+                            2 -> { // KeyPress
+                                // Cancel any pending debounced release
+                                synchronized(this) {
+                                    pendingReleaseJob?.cancel(false)
+                                    pendingReleaseJob = null
+                                }
 
                             if (isKeyCurrentlyDown.compareAndSet(false, true)) {
                                 logger.debug("Global hotkey KeyPress triggered: {}", config.displayText)
@@ -165,6 +172,13 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                             }
                         }
                     }
+                } else {
+                    try {
+                        Thread.sleep(15)
+                    } catch (_: InterruptedException) {
+                        break
+                    }
+                }
                 }
             } catch (e: Exception) {
                 if (isHookActive.get()) {

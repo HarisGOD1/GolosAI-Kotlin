@@ -66,3 +66,49 @@
   - Search bar to quickly filter historical transcriptions by keyword.
   - Local embedded storage persistence (SQLite or JSON lines in app directory).
   - "Clear History" button with confirmation.
+
+---
+
+### 6. Human-Readable Microphone Names & Device Identification
+- **Clean Device Formatting**:
+  - Filter out redundant/cryptic ALSA/JavaSound port names (e.g., `Port Direct Audio Device: hw:0,0`).
+  - Present friendly, recognizable titles (e.g., "Default System Microphone", "USB Microphone", "Internal Analog Input").
+
+---
+
+### 7. Alternative Microphone Provider (PortAudio JNA)
+- **Secondary Capture Backend**:
+  - Implement `PortAudioCapturePort` using `libportaudio.so.2` / `portaudio.dll` via JNA.
+  - Allow user to switch between `JavaSound` and `PortAudio` directly from audio preferences.
+
+---
+
+### 8. System Audio Output Monitor (Loopback) & Visual Indicators
+- **Output Audio Monitoring**:
+  - Support recording/transcribing system audio output (desktop sound, video calls, media).
+  - Provide distinct visual icons/badges in the UI distinguishing input microphones from output monitor/loopback channels.
+
+---
+
+### 9. File Speech-to-Text Transcription (MP3/WAV/etc.)
+*(Blocked by Task #5: Dictation History implementation)*
+- **Audio File Loader**:
+  - Support loading pre-recorded audio files (`.mp3`, `.wav`, `.flac`, `.m4a`, `.ogg`).
+  - Convert and pass audio to the voice backend for batch transcription.
+  - Copy transcribed text to clipboard and save as an entry in the Dictation History list for later retrieval.
+
+---
+
+### 10. Interactive Shortcut Key-Recorder UI
+- **Click-to-Record Hotkey Workflow**:
+  - Replace manual text/checkbox selection with an interactive "Record Shortcut" button.
+  - When active, listen for key down sequence (e.g. `Ctrl` + `Shift` + `L`).
+  - On key release, automatically finalize and save the shortcut (standard UX across modern apps like OBS, Discord, JetBrains).
+
+---
+
+### 11. Wayland & Unfocused Global Hotkey Architecture
+- **Wayland Global Shortcut Support**:
+  - In modern Linux Wayland environments, X11 `XGrabKey` is blocked by design when native Wayland apps are active.
+  - Implement XDG Desktop Portal `org.freedesktop.portal.GlobalShortcuts` integration via D-Bus for system-wide Wayland hotkeys.
+  - In X11, fix `XGrabKey` C ABI signature (`Bool` as `Int`), install `XSetErrorHandler` to suppress BadAccess aborts, and test root window event propagation.

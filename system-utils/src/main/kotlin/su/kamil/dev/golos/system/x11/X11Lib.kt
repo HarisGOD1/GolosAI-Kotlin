@@ -30,7 +30,7 @@ interface X11Lib : Library {
         keycode: Int,
         modifiers: Int,
         grab_window: Long,
-        owner_events: Boolean,
+        owner_events: Int,
         pointer_mode: Int,
         keyboard_mode: Int
     ): Int
@@ -40,6 +40,11 @@ interface X11Lib : Library {
         modifiers: Int,
         grab_window: Long
     ): Int
+    fun interface XErrorHandler : com.sun.jna.Callback {
+        fun callback(display: Pointer?, errorEvent: Pointer?): Int
+    }
+    fun XSetErrorHandler(handler: XErrorHandler?): Pointer?
+    fun XSync(display: Pointer?, discard: Boolean): Int
     fun XNextEvent(display: Pointer?, event_return: Pointer?): Int
     fun XPending(display: Pointer?): Int
     fun XPeekEvent(display: Pointer?, event_return: Pointer?): Int

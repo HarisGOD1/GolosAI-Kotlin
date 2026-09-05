@@ -40,16 +40,37 @@ class JavaSoundAudioCapture(
             val mixer = AudioSystem.getMixer(info)
             val lineInfo = Line.Info(TargetDataLine::class.java)
             if (mixer.isLineSupported(lineInfo)) {
+                val cleanName = formatCleanDeviceName(info.name, info.description)
                 devices.add(
                     AudioDevice(
                         id = info.name,
-                        name = "${info.name} (${info.description})",
+                        name = cleanName,
                         isDefault = devices.isEmpty()
                     )
                 )
             }
         }
         return devices
+    }
+
+    private fun formatCleanDeviceName(name: String, description: String): String {
+        val lowerName = name.lowercase()
+        val lowerDesc = description.lowercase()
+
+        return when {
+            lowerName.contains("default") || lowerDesc.contains("default") ->
+                "Default System Microphone"
+            lowerDesc.contains("pulseaudio") || lowerDesc.contains("pipewire") ->
+                "PipeWire / PulseAudio Input"
+            lowerName.startsWith("hw:") || lowerName.startsWith("plughw:") ->
+                "Hardware Microphone ($name)"
+            else -> {
+                val cleaned = name.replace("Port Direct Audio Device: ", "")
+                    .replace(Regex("\\[.*?\\]"), "")
+                    .trim()
+                if (cleaned.isNotEmpty()) cleaned else name
+            }
+        }
     }
 
     override fun startCapture(device: AudioDevice?, onChunkCaptured: (AudioChunk) -> Unit) {

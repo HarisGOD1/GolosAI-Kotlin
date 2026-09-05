@@ -17,6 +17,7 @@ import su.kamil.dev.golos.voice.download.WhisperModelInfo
 import su.kamil.dev.golos.voice.engine.InferenceDevice
 import su.kamil.dev.golos.voice.engine.WhisperCppEngine
 import java.awt.*
+import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.util.concurrent.atomic.AtomicBoolean
@@ -195,6 +196,80 @@ class PreferencesDialog(
         gbc.gridx = 1
         gbc.weightx = 0.7
 
+        val hotkeyOuterPanel = JPanel(BorderLayout(4, 4))
+
+        val recordBtn = JButton("🎙️ Record Shortcut (Click & Press Keys)")
+        recordBtn.font = Font(Font.SANS_SERIF, Font.BOLD, 12)
+        recordBtn.isFocusPainted = false
+
+        var pendingKeyConfig: HotkeyConfig? = null
+
+        recordBtn.addActionListener {
+            recordBtn.text = "Press keys now... (e.g. Ctrl+Shift+L)"
+            recordBtn.background = Color(210, 235, 255)
+            recordBtn.requestFocusInWindow()
+        }
+
+        recordBtn.addKeyListener(object : java.awt.event.KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                if (recordBtn.text.startsWith("Press") || recordBtn.text.startsWith("Holding")) {
+                    val isCtrl = (e.modifiersEx and java.awt.event.InputEvent.CTRL_DOWN_MASK) != 0
+                    val isShift = (e.modifiersEx and java.awt.event.InputEvent.SHIFT_DOWN_MASK) != 0
+                    val isAlt = (e.modifiersEx and java.awt.event.InputEvent.ALT_DOWN_MASK) != 0
+                    val isMeta = (e.modifiersEx and java.awt.event.InputEvent.META_DOWN_MASK) != 0
+
+                    val isModifierKey = e.keyCode == KeyEvent.VK_CONTROL ||
+                            e.keyCode == KeyEvent.VK_SHIFT ||
+                            e.keyCode == KeyEvent.VK_ALT ||
+                            e.keyCode == KeyEvent.VK_META
+
+                    if (!isModifierKey && e.keyCode != KeyEvent.VK_UNDEFINED) {
+                        val keyName = KeyEvent.getKeyText(e.keyCode)
+                        val config = HotkeyConfig(
+                            keyName = keyName,
+                            ctrl = isCtrl,
+                            shift = isShift,
+                            alt = isAlt,
+                            meta = isMeta,
+                            keyCode = e.keyCode
+                        )
+                        pendingKeyConfig = config
+                        recordBtn.text = "Holding: ${config.displayText}"
+                        ctrlCheck.isSelected = isCtrl
+                        shiftCheck.isSelected = isShift
+                        altCheck.isSelected = isAlt
+                        metaCheck.isSelected = isMeta
+                        keyField.text = keyName
+                    }
+                }
+            }
+
+            override fun keyReleased(e: KeyEvent) {
+                val config = pendingKeyConfig
+                if (config != null) {
+                    pendingKeyConfig = null
+                    val result = orchestrator.updateHotkey(config)
+                    if (result.isSuccess) {
+                        activeHotkeyLabel.text = config.displayText
+                        activeHotkeyLabel.foreground = Color(0, 128, 0)
+                        renderStatus(orchestrator.state.value)
+                        recordBtn.text = "Recorded: ${config.displayText} (Click to change)"
+                        recordBtn.background = null
+                    } else {
+                        recordBtn.text = "🎙️ Record Shortcut (Click & Press Keys)"
+                        recordBtn.background = null
+                        JOptionPane.showMessageDialog(
+                            this@PreferencesDialog,
+                            "Failed to register hotkey: ${result.exceptionOrNull()?.message}",
+                            "Error",
+                            JOptionPane.ERROR_MESSAGE
+                        )
+                    }
+                }
+            }
+        })
+        hotkeyOuterPanel.add(recordBtn, BorderLayout.NORTH)
+
         val hotkeyEditPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
         hotkeyEditPanel.add(ctrlCheck)
         hotkeyEditPanel.add(shiftCheck)
@@ -236,7 +311,8 @@ class PreferencesDialog(
             }
         }
         hotkeyEditPanel.add(applyHotkeyBtn)
-        panel.add(hotkeyEditPanel, gbc)
+        hotkeyOuterPanel.add(hotkeyEditPanel, BorderLayout.SOUTH)
+        panel.add(hotkeyOuterPanel, gbc)
 
         // 5. Text Insertion Mode
         gbc.gridx = 0
