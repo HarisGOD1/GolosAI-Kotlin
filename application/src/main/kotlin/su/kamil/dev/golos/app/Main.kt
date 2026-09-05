@@ -3,6 +3,7 @@ package su.kamil.dev.golos.app
 import org.slf4j.LoggerFactory
 import su.kamil.dev.golos.app.config.SettingsManager
 import su.kamil.dev.golos.app.history.HistoryManager
+import su.kamil.dev.golos.app.ui.FontManager
 import su.kamil.dev.golos.app.ui.PreferencesDialog
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
 import su.kamil.dev.golos.core.state.DictationStateMachine
@@ -127,6 +128,7 @@ fun main() {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
         } catch (_: Exception) {
         }
+        FontManager.installGlobalSwingDefaults(FontManager.DEFAULT_SIZE)
 
         SwingUtilities.invokeLater {
             val dialog =

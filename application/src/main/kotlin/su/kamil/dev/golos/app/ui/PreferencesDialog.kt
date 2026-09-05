@@ -64,13 +64,17 @@ import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.Box
 import javax.swing.BoxLayout
+import javax.swing.DefaultComboBoxModel
+import javax.swing.DefaultListCellRenderer
 import javax.swing.JButton
 import javax.swing.JCheckBox
 import javax.swing.JComboBox
+import javax.swing.JComponent
 import javax.swing.JDialog
 import javax.swing.JFileChooser
 import javax.swing.JFrame
 import javax.swing.JLabel
+import javax.swing.JList
 import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JProgressBar
@@ -78,6 +82,7 @@ import javax.swing.JScrollPane
 import javax.swing.JTabbedPane
 import javax.swing.JTextArea
 import javax.swing.JTextField
+import javax.swing.JToolTip
 import javax.swing.SwingUtilities
 import javax.swing.Timer
 import javax.swing.border.CompoundBorder
@@ -147,11 +152,36 @@ class PreferencesDialog(
     // System Tray
     private var trayIcon: TrayIcon? = null
 
+    private var isUpdatingLocalization = false
+
+    private fun createCleanToolTip(parent: JComponent): JToolTip {
+        return object : JToolTip() {
+            init {
+                component = parent
+                font = FontManager.regular(FontManager.SMALL_SIZE)
+            }
+        }
+    }
+
+    private class LocalizedComboRenderer : DefaultListCellRenderer() {
+        override fun getListCellRendererComponent(
+            list: JList<*>?,
+            value: Any?,
+            index: Int,
+            isSelected: Boolean,
+            cellHasFocus: Boolean,
+        ): Component {
+            val c = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+            c.font = FontManager.regular(FontManager.DEFAULT_SIZE)
+            return c
+        }
+    }
+
     // UI Language Selector
     private val uiLanguageCombo = JComboBox(AppLanguage.entries.map { it.displayName }.toTypedArray())
 
     // Audio Provider & Microphone
-    private val audioProviderCombo = JComboBox(arrayOf("JavaSound (Standard Cross-Platform)", "PortAudio (Alternative Native)"))
+    private val audioProviderCombo = JComboBox<String>()
     private val micCombo = JComboBox<String>()
     private val engineCombo = JComboBox<String>()
 
@@ -161,24 +191,28 @@ class PreferencesDialog(
     private val altCheck = JCheckBox("Alt")
     private val metaCheck = JCheckBox("Super/Win")
     private val keyField =
-        JTextField("F8", 6).apply {
+        object : JTextField("F8", 6) {
+            override fun createToolTip(): JToolTip = createCleanToolTip(this)
+        }.apply {
             font = FontManager.mono(FontManager.DEFAULT_SIZE)
+            toolTipText = AppLocalization.tr("tip.key_field")
         }
     private val activeHotkeyLabel =
         JLabel(orchestrator.currentHotkey.displayText).apply {
             font = FontManager.monoBold(FontManager.DEFAULT_SIZE)
         }
-    private val applyHotkeyBtn = JButton("Apply")
-    private val recordBtn = JButton("Record Shortcut (Click & Press Keys)")
+    private val applyHotkeyBtn = JButton(AppLocalization.tr("btn.apply"))
+    private val recordBtn = JButton(AppLocalization.tr("btn.record_shortcut"))
+    private val plusKeyLabel = JLabel(AppLocalization.tr("label.hotkey_plus_key"))
 
     // Privacy & Insertion Controls
-    private val insertionModeCombo = JComboBox(arrayOf("Direct Typing (Privacy-preserving)", "Clipboard Paste (Ctrl+V)"))
-    private val timingCombo = JComboBox(arrayOf("On Key Release (Default - Whole phrase)", "On the Fly (Incremental live typing)"))
-    private val copyClipboardCheck = JCheckBox("Save transcription to clipboard", false)
-    private val fallbackClipboardCheck = JCheckBox("Save to clipboard if no active field focused", true)
+    private val insertionModeCombo = JComboBox<String>()
+    private val timingCombo = JComboBox<String>()
+    private val copyClipboardCheck = JCheckBox(AppLocalization.tr("check.copy_clipboard"), false)
+    private val fallbackClipboardCheck = JCheckBox(AppLocalization.tr("check.fallback_clipboard"), true)
 
     // Autostart Control
-    private val autostartCheck = JCheckBox("Start GolosAI automatically on system login", autoStartManager.isAutoStartEnabled())
+    private val autostartCheck = JCheckBox(AppLocalization.tr("check.autostart"), autoStartManager.isAutoStartEnabled())
 
     // Whisper & Model Management
     private val whisperEngine = availableEngines.filterIsInstance<WhisperCppEngine>().firstOrNull()
@@ -192,69 +226,57 @@ class PreferencesDialog(
             font = FontManager.mono(FontManager.SMALL_SIZE)
         }
     private val downloadBinaryBtn =
-        JButton("Download CLI").apply {
-            toolTipText = "Download precompiled whisper-cli binary"
+        object : JButton(AppLocalization.tr("btn.download_binary")) {
+            override fun createToolTip(): JToolTip = createCleanToolTip(this)
+        }.apply {
+            toolTipText = AppLocalization.tr("tip.download_cli")
         }
-    private val browseBinaryBtn = JButton("Browse...")
+    private val browseBinaryBtn = JButton(AppLocalization.tr("btn.browse"))
 
     // Model Controls
     private val modelCombo = JComboBox<String>()
     private val modelStatusLabel = JLabel("Status: Checking...")
-    private val downloadModelBtn = JButton("Download Model")
+    private val downloadModelBtn = JButton(AppLocalization.tr("btn.download_model"))
     private val downloadProgressBar = JProgressBar(0, 100)
     private val downloadCancelFlag = AtomicBoolean(false)
 
     // Spoken Languages (FR, DE, RU, JP, CN, TR, AR, ES, IT, PT, KO, UK, PL, NL, EN, Auto)
-    private val languageCombo =
-        JComboBox(
-            arrayOf(
-                "Auto-Detect (auto)",
-                "English (en)",
-                "French (fr)",
-                "German (de)",
-                "Russian (ru)",
-                "Japanese (ja)",
-                "Chinese (zh)",
-                "Turkish (tr)",
-                "Arabic (ar)",
-                "Spanish (es)",
-                "Italian (it)",
-                "Portuguese (pt)",
-                "Korean (ko)",
-                "Ukrainian (uk)",
-                "Polish (pl)",
-                "Dutch (nl)",
-            ),
-        )
     private val languageCodes =
         listOf("auto", "en", "fr", "de", "ru", "ja", "zh", "tr", "ar", "es", "it", "pt", "ko", "uk", "pl", "nl")
+    private val languageCombo = JComboBox<String>()
 
     // Bilingual Mode (EN + Selected Language)
+    private val bilingualLabel = JLabel(AppLocalization.tr("label.bilingual_mode"))
     private val bilingualModeCheck =
-        JCheckBox("Bilingual Mode (EN + Selected Language)", false).apply {
-            toolTipText = "Allows mixed code-switching between English and selected language"
+        object : JCheckBox(AppLocalization.tr("check.bilingual"), false) {
+            override fun createToolTip(): JToolTip = createCleanToolTip(this)
+        }.apply {
+            toolTipText = AppLocalization.tr("tip.bilingual")
         }
 
-    private val deviceCombo =
-        JComboBox(
-            arrayOf(
-                InferenceDevice.CPU.displayName,
-                InferenceDevice.GPU.displayName,
-            ),
-        )
+    private val deviceCombo = JComboBox<String>()
 
     // History UI components
     private val historyListPanel = JPanel()
     private val historySearchField = JTextField(12)
-    private val historyCountLabel = JLabel("Total: 0 entries")
+    private val historyCountLabel = JLabel(String.format(AppLocalization.tr("label.history_total"), 0))
 
     private val coroutineScope = CoroutineScope(Dispatchers.Default + Job())
     private var availableDevices: List<AudioDevice> = emptyList()
 
     // Localized UI Elements (dynamic language switching)
-    private val collapseBtn = JButton("[-] " + AppLocalization.tr("btn.collapse"))
-    private val expandBtn = JButton("[+] " + AppLocalization.tr("btn.expand"))
-    private val closeBtn = JButton("X")
+    private val collapseBtn =
+        object : JButton("[-] " + AppLocalization.tr("btn.collapse")) {
+            override fun createToolTip(): JToolTip = createCleanToolTip(this)
+        }
+    private val expandBtn =
+        object : JButton("[+] " + AppLocalization.tr("btn.expand")) {
+            override fun createToolTip(): JToolTip = createCleanToolTip(this)
+        }
+    private val closeBtn =
+        object : JButton("X") {
+            override fun createToolTip(): JToolTip = createCleanToolTip(this)
+        }
     private val copyRecentBtn = JButton(AppLocalization.tr("btn.copy"))
     private val hideTrayBtn = JButton(AppLocalization.tr("btn.hide_tray"))
     private val openSettingsBtn = JButton(AppLocalization.tr("btn.open_settings"))
@@ -270,27 +292,142 @@ class PreferencesDialog(
     private val timingLabel = JLabel(AppLocalization.tr("label.timing"))
     private val privLabel = JLabel(AppLocalization.tr("label.clipboard_privacy"))
     private val autoLabel = JLabel(AppLocalization.tr("label.system_startup"))
-    private val resetBtn = JButton(AppLocalization.tr("btn.reset_defaults"))
-    private val exportBtn = JButton(AppLocalization.tr("btn.export"))
-    private val importBtn = JButton(AppLocalization.tr("btn.import"))
+    private val resetBtn =
+        object : JButton(AppLocalization.tr("btn.reset_defaults")) {
+            override fun createToolTip(): JToolTip = createCleanToolTip(this)
+        }
+    private val exportBtn =
+        object : JButton(AppLocalization.tr("btn.export")) {
+            override fun createToolTip(): JToolTip = createCleanToolTip(this)
+        }
+    private val importBtn =
+        object : JButton(AppLocalization.tr("btn.import")) {
+            override fun createToolTip(): JToolTip = createCleanToolTip(this)
+        }
 
     private val execLabel = JLabel(AppLocalization.tr("label.whisper_exec"))
     private val modLabel = JLabel(AppLocalization.tr("label.multilingual_model"))
     private val spokenLangLabel = JLabel(AppLocalization.tr("label.spoken_lang"))
     private val devLabel = JLabel(AppLocalization.tr("label.inference_device"))
+    private val statLabel = JLabel(AppLocalization.tr("label.model_status"))
+    private val progLabel = JLabel(AppLocalization.tr("label.download_progress"))
+    private val fileLabel = JLabel(AppLocalization.tr("label.audio_file_dictation"))
     private val transcribeFileBtn = JButton(AppLocalization.tr("btn.transcribe_file"))
 
     private val historySearchLabel = JLabel(AppLocalization.tr("label.search_history"))
     private val historyTranscribeBtn = JButton(AppLocalization.tr("btn.transcribe_file"))
     private val clearBtn = JButton(AppLocalization.tr("btn.clear_history"))
 
+    private fun configureCheckBox(cb: JCheckBox) {
+        val regularFont = FontManager.regular(FontManager.DEFAULT_SIZE)
+        cb.font = regularFont
+        cb.isFocusPainted = false
+        cb.addChangeListener {
+            val f = FontManager.regular(FontManager.DEFAULT_SIZE)
+            if (cb.font != f) {
+                cb.font = f
+            }
+        }
+        cb.addMouseListener(
+            object : MouseAdapter() {
+                override fun mouseEntered(e: MouseEvent) {
+                    cb.font = FontManager.regular(FontManager.DEFAULT_SIZE)
+                }
+
+                override fun mouseExited(e: MouseEvent) {
+                    cb.font = FontManager.regular(FontManager.DEFAULT_SIZE)
+                }
+            },
+        )
+    }
+
+    private fun configureAllCheckBoxes() {
+        configureCheckBox(ctrlCheck)
+        configureCheckBox(shiftCheck)
+        configureCheckBox(altCheck)
+        configureCheckBox(metaCheck)
+        configureCheckBox(copyClipboardCheck)
+        configureCheckBox(fallbackClipboardCheck)
+        configureCheckBox(autostartCheck)
+        configureCheckBox(bilingualModeCheck)
+    }
+
+    private fun configureAllComboBoxes() {
+        val renderer = LocalizedComboRenderer()
+        val combos: List<JComboBox<*>> =
+            listOf(
+                uiLanguageCombo,
+                audioProviderCombo,
+                micCombo,
+                engineCombo,
+                insertionModeCombo,
+                timingCombo,
+                modelCombo,
+                languageCombo,
+                deviceCombo,
+            )
+        for (c in combos) {
+            c.font = FontManager.regular(FontManager.DEFAULT_SIZE)
+            c.renderer = renderer
+        }
+        refreshComboModel(
+            audioProviderCombo,
+            listOf(
+                AppLocalization.tr("opt.audio.javasound"),
+                AppLocalization.tr("opt.audio.portaudio"),
+            ),
+        )
+        refreshComboModel(
+            insertionModeCombo,
+            listOf(
+                AppLocalization.tr("opt.ins.direct"),
+                AppLocalization.tr("opt.ins.clipboard"),
+            ),
+        )
+        refreshComboModel(
+            timingCombo,
+            listOf(
+                AppLocalization.tr("opt.timing.release"),
+                AppLocalization.tr("opt.timing.onthefly"),
+            ),
+        )
+        refreshComboModel(
+            deviceCombo,
+            listOf(
+                AppLocalization.tr("opt.device.cpu"),
+                AppLocalization.tr("opt.device.gpu"),
+            ),
+        )
+        refreshComboModel(
+            languageCombo,
+            languageCodes.map { AppLocalization.tr("lang.$it") },
+        )
+    }
+
+    private fun refreshComboModel(
+        combo: JComboBox<String>,
+        items: List<String>,
+    ) {
+        val prevIdx = combo.selectedIndex
+        val model = DefaultComboBoxModel(items.toTypedArray())
+        combo.model = model
+        if (prevIdx in items.indices) {
+            combo.selectedIndex = prevIdx
+        } else if (items.isNotEmpty()) {
+            combo.selectedIndex = 0
+        }
+    }
+
     init {
-        FontManager.installGlobalSwingDefaults(13f)
+        configureAllCheckBoxes()
+        configureAllComboBoxes()
+        FontManager.installGlobalSwingDefaults(FontManager.DEFAULT_SIZE)
         initUi()
+        setupLocalizationListener()
+        updateLocalizedTexts()
         loadInitialConfig()
         observeState()
         wireHistoryListener()
-        setupLocalizationListener()
     }
 
     fun showInFrame(): JFrame {
@@ -581,62 +718,129 @@ class PreferencesDialog(
     }
 
     fun updateLocalizedTexts() {
-        FontManager.selectFontForLanguage(AppLocalization.currentLanguage)
-        FontManager.installGlobalSwingDefaults(13f)
-        updateFontsRecursively(this)
+        isUpdatingLocalization = true
+        try {
+            FontManager.selectFontForLanguage(AppLocalization.currentLanguage)
+            FontManager.installGlobalSwingDefaults(13f)
+            updateFontsRecursively(this)
 
-        tabbedPane.setTitleAt(0, AppLocalization.tr("tab.dashboard"))
-        tabbedPane.setTitleAt(1, AppLocalization.tr("tab.settings"))
-        tabbedPane.setTitleAt(2, AppLocalization.tr("tab.whisper"))
-        tabbedPane.setTitleAt(3, AppLocalization.tr("tab.history"))
+            tabbedPane.setTitleAt(0, AppLocalization.tr("tab.dashboard"))
+            tabbedPane.setTitleAt(1, AppLocalization.tr("tab.settings"))
+            tabbedPane.setTitleAt(2, AppLocalization.tr("tab.whisper"))
+            tabbedPane.setTitleAt(3, AppLocalization.tr("tab.history"))
 
-        collapseBtn.text = "[-] " + AppLocalization.tr("btn.collapse")
-        recentTitle.text = AppLocalization.tr("label.recent_speech")
-        copyRecentBtn.text = AppLocalization.tr("btn.copy")
-        hideTrayBtn.text = AppLocalization.tr("btn.hide_tray")
-        openSettingsBtn.text = AppLocalization.tr("btn.open_settings")
-        exitBtn.text = AppLocalization.tr("btn.exit")
+            collapseBtn.text = "[-] " + AppLocalization.tr("btn.collapse")
+            collapseBtn.toolTipText = AppLocalization.tr("btn.collapse")
+            recentTitle.text = AppLocalization.tr("label.recent_speech")
+            copyRecentBtn.text = AppLocalization.tr("btn.copy")
+            hideTrayBtn.text = AppLocalization.tr("btn.hide_tray")
+            openSettingsBtn.text = AppLocalization.tr("btn.open_settings")
+            exitBtn.text = AppLocalization.tr("btn.exit")
 
-        expandBtn.text = "[+] " + AppLocalization.tr("btn.expand")
-        closeBtn.toolTipText = AppLocalization.tr("btn.exit")
+            expandBtn.text = "[+] " + AppLocalization.tr("btn.expand")
+            closeBtn.toolTipText = AppLocalization.tr("btn.exit")
 
-        langLabel.text = AppLocalization.tr("label.ui_language")
-        provLabel.text = AppLocalization.tr("label.audio_provider")
-        micLabel.text = AppLocalization.tr("label.microphone")
-        engLabel.text = AppLocalization.tr("label.engine")
-        hkLabel.text = AppLocalization.tr("label.hotkey")
-        insLabel.text = AppLocalization.tr("label.insertion_mode")
-        timingLabel.text = AppLocalization.tr("label.timing")
-        privLabel.text = AppLocalization.tr("label.clipboard_privacy")
-        autoLabel.text = AppLocalization.tr("label.system_startup")
-        resetBtn.text = AppLocalization.tr("btn.reset_defaults")
-        exportBtn.text = AppLocalization.tr("btn.export")
-        importBtn.text = AppLocalization.tr("btn.import")
+            langLabel.text = AppLocalization.tr("label.ui_language")
+            provLabel.text = AppLocalization.tr("label.audio_provider")
+            micLabel.text = AppLocalization.tr("label.microphone")
+            engLabel.text = AppLocalization.tr("label.engine")
+            hkLabel.text = AppLocalization.tr("label.hotkey")
+            insLabel.text = AppLocalization.tr("label.insertion_mode")
+            timingLabel.text = AppLocalization.tr("label.timing")
+            privLabel.text = AppLocalization.tr("label.clipboard_privacy")
+            autoLabel.text = AppLocalization.tr("label.system_startup")
+            resetBtn.text = AppLocalization.tr("btn.reset_defaults")
+            resetBtn.toolTipText = AppLocalization.tr("tip.reset_defaults")
+            exportBtn.text = AppLocalization.tr("btn.export")
+            exportBtn.toolTipText = AppLocalization.tr("tip.export")
+            importBtn.text = AppLocalization.tr("btn.import")
+            importBtn.toolTipText = AppLocalization.tr("tip.import")
 
-        execLabel.text = AppLocalization.tr("label.whisper_exec")
-        modLabel.text = AppLocalization.tr("label.multilingual_model")
-        spokenLangLabel.text = AppLocalization.tr("label.spoken_lang")
-        devLabel.text = AppLocalization.tr("label.inference_device")
-        transcribeFileBtn.text = AppLocalization.tr("btn.transcribe_file")
+            recordBtn.text = AppLocalization.tr("btn.record_shortcut")
+            applyHotkeyBtn.text = AppLocalization.tr("btn.apply")
+            plusKeyLabel.text = AppLocalization.tr("label.hotkey_plus_key")
+            keyField.toolTipText = AppLocalization.tr("tip.key_field")
 
-        historySearchLabel.text = AppLocalization.tr("label.search_history")
-        historyTranscribeBtn.text = AppLocalization.tr("btn.transcribe_file")
-        clearBtn.text = AppLocalization.tr("btn.clear_history")
+            execLabel.text = AppLocalization.tr("label.whisper_exec")
+            modLabel.text = AppLocalization.tr("label.multilingual_model")
+            spokenLangLabel.text = AppLocalization.tr("label.spoken_lang")
+            devLabel.text = AppLocalization.tr("label.inference_device")
+            transcribeFileBtn.text = AppLocalization.tr("btn.transcribe_file")
+            bilingualLabel.text = AppLocalization.tr("label.bilingual_mode")
+            statLabel.text = AppLocalization.tr("label.model_status")
+            progLabel.text = AppLocalization.tr("label.download_progress")
+            fileLabel.text = AppLocalization.tr("label.audio_file_dictation")
 
-        val currentAreaText = recentDictationArea.text
-        if (currentAreaText.isBlank() || isPlaceholderText(currentAreaText)) {
-            recentDictationArea.text = AppLocalization.tr("placeholder.no_dictations")
+            downloadBinaryBtn.text = AppLocalization.tr("btn.download_binary")
+            downloadBinaryBtn.toolTipText = AppLocalization.tr("tip.download_cli")
+            browseBinaryBtn.text = AppLocalization.tr("btn.browse")
+            downloadModelBtn.text = AppLocalization.tr("btn.download_model")
+
+            copyClipboardCheck.text = AppLocalization.tr("check.copy_clipboard")
+            fallbackClipboardCheck.text = AppLocalization.tr("check.fallback_clipboard")
+            autostartCheck.text = AppLocalization.tr("check.autostart")
+            bilingualModeCheck.text = AppLocalization.tr("check.bilingual")
+            bilingualModeCheck.toolTipText = AppLocalization.tr("tip.bilingual")
+
+            historySearchLabel.text = AppLocalization.tr("label.search_history")
+            historyTranscribeBtn.text = AppLocalization.tr("btn.transcribe_file")
+            clearBtn.text = AppLocalization.tr("btn.clear_history")
+
+            // Refresh drop-box options with localized strings
+            val audioProviders =
+                listOf(
+                    AppLocalization.tr("opt.audio.javasound"),
+                    AppLocalization.tr("opt.audio.portaudio"),
+                )
+            refreshComboModel(audioProviderCombo, audioProviders)
+
+            val insItems =
+                listOf(
+                    AppLocalization.tr("opt.ins.direct"),
+                    AppLocalization.tr("opt.ins.clipboard"),
+                )
+            refreshComboModel(insertionModeCombo, insItems)
+
+            val timingItems =
+                listOf(
+                    AppLocalization.tr("opt.timing.release"),
+                    AppLocalization.tr("opt.timing.onthefly"),
+                )
+            refreshComboModel(timingCombo, timingItems)
+
+            val devItems =
+                listOf(
+                    AppLocalization.tr("opt.device.cpu"),
+                    AppLocalization.tr("opt.device.gpu"),
+                )
+            refreshComboModel(deviceCombo, devItems)
+
+            val langItems =
+                languageCodes.map { code ->
+                    AppLocalization.tr("lang.$code")
+                }
+            refreshComboModel(languageCombo, langItems)
+
+            val currentAreaText = recentDictationArea.text
+            if (currentAreaText.isBlank() || isPlaceholderText(currentAreaText)) {
+                recentDictationArea.text = AppLocalization.tr("placeholder.no_dictations")
+            }
+
+            updateBinaryStatus()
+            updateModelStatus()
+
+            renderStatus(orchestrator.state.value)
+            dashboardAppBulb.repaint()
+            dashboardVoiceBulb.repaint()
+            dashboardModeBulb.repaint()
+            miniAppBulb.repaint()
+            miniVoiceBulb.repaint()
+            miniModeBulb.repaint()
+            revalidate()
+            repaint()
+        } finally {
+            isUpdatingLocalization = false
         }
-
-        renderStatus(orchestrator.state.value)
-        dashboardAppBulb.repaint()
-        dashboardVoiceBulb.repaint()
-        dashboardModeBulb.repaint()
-        miniAppBulb.repaint()
-        miniVoiceBulb.repaint()
-        miniModeBulb.repaint()
-        revalidate()
-        repaint()
     }
 
     private fun isPlaceholderText(text: String): Boolean {
@@ -644,6 +848,7 @@ class PreferencesDialog(
             text.startsWith("Aucune dictée") ||
             text.startsWith("Noch keine Diktate") ||
             text.startsWith("Диктовки отсутствуют") ||
+            text.startsWith("変換履歴がありません") ||
             text.startsWith("文字起こしはまだありません") ||
             text.startsWith("暂无听写记录") ||
             text.startsWith("Henüz dikte yok") ||
@@ -653,10 +858,26 @@ class PreferencesDialog(
     }
 
     private fun updateFontsRecursively(comp: Component) {
+        if (comp === keyField || comp === activeHotkeyLabel || comp === binaryPathField) {
+            return
+        }
+        val regularFont = FontManager.regular(FontManager.DEFAULT_SIZE)
+        val boldFont = FontManager.bold(FontManager.DEFAULT_SIZE)
         val f = comp.font
         if (f != null && f.family != FontManager.hackRegularFont.family && f.family != FontManager.hackBoldFont.family) {
             val size = f.size2D
             comp.font = if (f.isBold) FontManager.bold(size) else FontManager.regular(size)
+        } else if (f == null || f.family == FontManager.hackRegularFont.family) {
+            comp.font = regularFont
+        }
+        if (comp is JTabbedPane) {
+            comp.font = boldFont
+        }
+        if (comp is JComboBox<*>) {
+            comp.font = regularFont
+        }
+        if (comp is JCheckBox) {
+            comp.font = regularFont
         }
         if (comp is Container) {
             for (child in comp.components) {
@@ -794,6 +1015,7 @@ class PreferencesDialog(
         gbc.gridx = 1
         gbc.weightx = 0.68
         uiLanguageCombo.addActionListener {
+            if (isUpdatingLocalization) return@addActionListener
             val selected = AppLanguage.entries.getOrNull(uiLanguageCombo.selectedIndex) ?: AppLanguage.EN
             AppLocalization.setLanguage(selected)
             saveCurrentConfig()
@@ -808,6 +1030,7 @@ class PreferencesDialog(
         gbc.gridx = 1
         gbc.weightx = 0.68
         audioProviderCombo.addActionListener {
+            if (isUpdatingLocalization) return@addActionListener
             val isPortAudio = audioProviderCombo.selectedIndex == 1
             orchestrator.audioCapture =
                 if (isPortAudio) {
@@ -949,8 +1172,6 @@ class PreferencesDialog(
         hotkeyEditPanel.add(altCheck)
         hotkeyEditPanel.add(metaCheck)
 
-        keyField.toolTipText = "Key (e.g. L, F8, Space, Return)"
-        val plusKeyLabel = JLabel("+ Key:")
         hotkeyEditPanel.add(plusKeyLabel)
         hotkeyEditPanel.add(keyField)
 
@@ -999,6 +1220,7 @@ class PreferencesDialog(
         gbc.gridx = 1
         gbc.weightx = 0.68
         insertionModeCombo.addActionListener {
+            if (isUpdatingLocalization) return@addActionListener
             syncInjectionConfig()
             saveCurrentConfig()
         }
@@ -1012,6 +1234,7 @@ class PreferencesDialog(
         gbc.gridx = 1
         gbc.weightx = 0.68
         timingCombo.addActionListener {
+            if (isUpdatingLocalization) return@addActionListener
             syncInjectionConfig()
             saveCurrentConfig()
             renderStatus(orchestrator.state.value)
@@ -1206,7 +1429,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 2
         gbc.weightx = 0.32
-        val statLabel = JLabel("Model Status:")
         panel.add(statLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -1222,7 +1444,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 3
         gbc.weightx = 0.32
-        val progLabel = JLabel("Download Progress:")
         panel.add(progLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -1239,6 +1460,7 @@ class PreferencesDialog(
         gbc.gridx = 1
         gbc.weightx = 0.68
         languageCombo.addActionListener {
+            if (isUpdatingLocalization) return@addActionListener
             val idx = languageCombo.selectedIndex
             if (idx in languageCodes.indices && whisperEngine != null) {
                 whisperEngine.language = languageCodes[idx]
@@ -1252,7 +1474,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 5
         gbc.weightx = 0.32
-        val bilingualLabel = JLabel("Bilingual Mode:")
         panel.add(bilingualLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -1272,6 +1493,7 @@ class PreferencesDialog(
         gbc.gridx = 1
         gbc.weightx = 0.68
         deviceCombo.addActionListener {
+            if (isUpdatingLocalization) return@addActionListener
             if (whisperEngine != null) {
                 whisperEngine.device = if (deviceCombo.selectedIndex == 0) InferenceDevice.CPU else InferenceDevice.GPU
                 saveCurrentConfig()
@@ -1283,7 +1505,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 7
         gbc.weightx = 0.32
-        val fileLabel = JLabel("Audio File Dictation:")
         panel.add(fileLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -1512,14 +1733,14 @@ class PreferencesDialog(
         val selectedModel = WhisperModelInfo.AVAILABLE_MODELS[modelCombo.selectedIndex]
         val isDownloaded = modelDownloader.isModelDownloaded(selectedModel)
         if (isDownloaded) {
-            modelStatusLabel.text = "[OK] Downloaded"
+            modelStatusLabel.text = "[OK] " + AppLocalization.tr("status.model_downloaded")
             modelStatusLabel.foreground = Color(0, 140, 0)
-            downloadModelBtn.text = "Re-download"
+            downloadModelBtn.text = AppLocalization.tr("btn.redownload")
             whisperEngine?.modelPath = modelDownloader.getLocalModelFile(selectedModel).absolutePath
         } else {
-            modelStatusLabel.text = "[!] Not found locally"
+            modelStatusLabel.text = "[!] " + AppLocalization.tr("status.model_not_found")
             modelStatusLabel.foreground = Color(180, 0, 0)
-            downloadModelBtn.text = "Download (${selectedModel.approximateSizeMb} MB)"
+            downloadModelBtn.text = "${AppLocalization.tr("btn.download")} (${selectedModel.approximateSizeMb} MB)"
         }
     }
 

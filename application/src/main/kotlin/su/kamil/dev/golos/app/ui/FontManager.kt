@@ -5,6 +5,7 @@ import java.awt.Font
 import java.awt.GraphicsEnvironment
 import java.io.InputStream
 import javax.swing.UIManager
+import javax.swing.plaf.FontUIResource
 
 /**
  * Font manager providing:
@@ -89,6 +90,7 @@ object FontManager {
                         "IPAGothic",
                         "Noto Sans CJK HK",
                         "Noto Sans CJK SC",
+                        Font.SANS_SERIF,
                     )
                 AppLanguage.CN ->
                     listOf(
@@ -101,23 +103,27 @@ object FontManager {
                         "Noto Sans CJK TC",
                         "Noto Sans CJK HK",
                         "Noto Sans CJK JP",
+                        Font.SANS_SERIF,
                     )
                 AppLanguage.AR ->
                     listOf(
-                        Font.SANS_SERIF,
+                        "Noto Sans Arabic",
                         "DejaVu Sans",
                         "Segoe UI",
                         "Geeza Pro",
                         "Arial",
-                        "Noto Sans Arabic",
+                        "Tahoma",
+                        Font.SANS_SERIF,
                     )
                 else ->
                     listOf(
-                        Font.SANS_SERIF,
+                        "Cantarell",
                         "DejaVu Sans",
                         "Segoe UI",
                         "SF Pro Text",
                         "Ubuntu",
+                        "Liberation Sans",
+                        Font.SANS_SERIF,
                     )
             }
         currentFontFamily = resolveFamily(candidates, sample)
@@ -176,18 +182,31 @@ object FontManager {
 
     /**
      * Installs clean, high-legibility proportional fonts into Swing UIManager defaults.
+     * Uses FontUIResource to guarantee LookAndFeel delegates (including GTK / Synth)
+     * respect the application font across hover, focus, and selection states without
+     * falling back to unstyled system or monospaced fonts.
      */
     fun installGlobalSwingDefaults(baseSize: Float = DEFAULT_SIZE) {
-        val baseFont = regular(baseSize)
-        val boldBaseFont = bold(baseSize)
+        val baseFont = FontUIResource(regular(baseSize))
+        val boldBaseFont = FontUIResource(bold(baseSize))
+        val smallFont = FontUIResource(regular(SMALL_SIZE))
 
-        val fontKeys =
+        val regularKeys =
             listOf(
                 "Label.font",
                 "Button.font",
+                "Button.rolloverFont",
+                "Button.focusFont",
                 "ToggleButton.font",
                 "RadioButton.font",
+                "RadioButton.rolloverFont",
                 "CheckBox.font",
+                "CheckBox.rolloverFont",
+                "CheckBox.focusFont",
+                "CheckBox.acceleratorFont",
+                "CheckBox[MouseOver].font",
+                "CheckBox[Focused].font",
+                "CheckBox[Selected].font",
                 "ComboBox.font",
                 "TextField.font",
                 "PasswordField.font",
@@ -197,17 +216,30 @@ object FontManager {
                 "Menu.font",
                 "MenuItem.font",
                 "PopupMenu.font",
-                "ToolTip.font",
                 "List.font",
                 "Table.font",
                 "TableHeader.font",
                 "ProgressBar.font",
             )
 
-        for (key in fontKeys) {
+        val uims = listOf(UIManager.getDefaults(), UIManager.getLookAndFeelDefaults())
+        for (key in regularKeys) {
             UIManager.put(key, baseFont)
+            for (map in uims) {
+                map?.put(key, baseFont)
+            }
         }
+
+        UIManager.put("ToolTip.font", smallFont)
+        for (map in uims) {
+            map?.put("ToolTip.font", smallFont)
+        }
+
         UIManager.put("TabbedPane.font", boldBaseFont)
         UIManager.put("TitledBorder.font", boldBaseFont)
+        for (map in uims) {
+            map?.put("TabbedPane.font", boldBaseFont)
+            map?.put("TitledBorder.font", boldBaseFont)
+        }
     }
 }

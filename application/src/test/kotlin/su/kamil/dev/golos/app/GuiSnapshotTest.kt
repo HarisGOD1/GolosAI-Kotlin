@@ -1,5 +1,6 @@
 package su.kamil.dev.golos.app
 
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import su.kamil.dev.golos.app.config.SettingsManager
 import su.kamil.dev.golos.app.history.HistoryManager
@@ -22,6 +23,7 @@ import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import javax.swing.JCheckBox
 import javax.swing.JTabbedPane
 import javax.swing.SwingUtilities
 
@@ -131,6 +133,43 @@ class GuiSnapshotTest {
             AppLocalization.setLanguage(AppLanguage.AR)
             dialog.selectTab(0)
             renderContainer(dialog, width, height, File(outDir, "12_dashboard_arabic.png"))
+
+            // 13. Settings Tab in Chinese (verify dropdown items and font)
+            AppLocalization.setLanguage(AppLanguage.CN)
+            dialog.selectTab(1)
+            renderContainer(dialog, width, height, File(outDir, "13_settings_tab_chinese.png"))
+
+            // 14. Whisper Tab in Chinese (verify full language coverage)
+            dialog.selectTab(2)
+            renderContainer(dialog, width, height, File(outDir, "14_whisper_tab_chinese.png"))
+
+            // 15. Checkbox hover test (verify font remains proportional sans-serif on rollover)
+            dialog.selectTab(1)
+            val autostartCheckField =
+                PreferencesDialog::class.java.getDeclaredField("autostartCheck").apply {
+                    isAccessible = true
+                }
+            val autostartCheck = autostartCheckField.get(dialog) as JCheckBox
+            autostartCheck.model.isRollover = true
+            for (listener in autostartCheck.mouseListeners) {
+                listener.mouseEntered(
+                    java.awt.event.MouseEvent(
+                        autostartCheck,
+                        java.awt.event.MouseEvent.MOUSE_ENTERED,
+                        System.currentTimeMillis(),
+                        0,
+                        10,
+                        10,
+                        0,
+                        false,
+                    ),
+                )
+            }
+            assertFalse(
+                autostartCheck.font.family.contains("Hack", ignoreCase = true),
+                "Checkbox font must not be Hack on hover",
+            )
+            renderContainer(dialog, width, height, File(outDir, "15_checkbox_hover.png"))
 
             // Reset language
             AppLocalization.setLanguage(AppLanguage.EN)
