@@ -45,5 +45,6 @@ interface GlobalHotkeyHook {
  * Port for injecting transcribed text into the user's currently focused input field.
  */
 interface TextInjectorPort {
+    fun initialize(): Result<Unit> = Result.success(Unit)
     fun injectText(text: String): Result<Unit>
 }

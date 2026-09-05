@@ -149,6 +149,7 @@ class PreferencesDialog(
             if (result.isSuccess) {
                 activeHotkeyLabel.text = newConfig.displayText
                 activeHotkeyLabel.foreground = Color(0, 128, 0)
+                renderStatus(orchestrator.state.value)
                 JOptionPane.showMessageDialog(
                     this,
                     "Hotkey updated to: ${newConfig.displayText}",
@@ -190,6 +191,9 @@ class PreferencesDialog(
 
         actionPanel.add(pttButton, BorderLayout.CENTER)
         add(actionPanel, BorderLayout.SOUTH)
+
+        // Initial status render
+        renderStatus(orchestrator.state.value)
     }
 
     private fun refreshMicrophoneList() {
@@ -208,27 +212,31 @@ class PreferencesDialog(
         coroutineScope.launch {
             orchestrator.state.collect { state ->
                 SwingUtilities.invokeLater {
-                    when (state) {
-                        DictationState.IDLE -> {
-                            statusLabel.text = "Status: IDLE (Ready - Hold ${activeHotkeyLabel.text})"
-                            statusLabel.background = Color(230, 245, 230)
-                            statusLabel.foreground = Color(30, 120, 30)
-                            pttButton.text = "🎙️ Hold to Speak (Push to Talk)"
-                        }
-                        DictationState.RECORDING -> {
-                            statusLabel.text = "Status: 🔴 RECORDING (Listening...)"
-                            statusLabel.background = Color(255, 230, 230)
-                            statusLabel.foreground = Color(180, 20, 20)
-                            pttButton.text = "🔴 Recording... Release to transcribe"
-                        }
-                        DictationState.PROCESSING -> {
-                            statusLabel.text = "Status: ⏳ PROCESSING (Transcribing & Pasting...)"
-                            statusLabel.background = Color(255, 250, 220)
-                            statusLabel.foreground = Color(160, 100, 0)
-                            pttButton.text = "⏳ Processing speech..."
-                        }
-                    }
+                    renderStatus(state)
                 }
+            }
+        }
+    }
+
+    private fun renderStatus(state: DictationState) {
+        when (state) {
+            DictationState.IDLE -> {
+                statusLabel.text = "Status: IDLE (Ready - Hold ${orchestrator.currentHotkey.displayText})"
+                statusLabel.background = Color(230, 245, 230)
+                statusLabel.foreground = Color(30, 120, 30)
+                pttButton.text = "🎙️ Hold to Speak (${orchestrator.currentHotkey.displayText})"
+            }
+            DictationState.RECORDING -> {
+                statusLabel.text = "Status: 🔴 RECORDING (Listening...)"
+                statusLabel.background = Color(255, 230, 230)
+                statusLabel.foreground = Color(180, 20, 20)
+                pttButton.text = "🔴 Recording... Release to transcribe"
+            }
+            DictationState.PROCESSING -> {
+                statusLabel.text = "Status: ⏳ PROCESSING (Transcribing & Pasting...)"
+                statusLabel.background = Color(255, 250, 220)
+                statusLabel.foreground = Color(160, 100, 0)
+                pttButton.text = "⏳ Processing speech..."
             }
         }
     }

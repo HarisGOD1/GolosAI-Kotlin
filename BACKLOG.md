@@ -28,3 +28,16 @@
   - Integration with Wayland global shortcut portal (`org.freedesktop.portal.GlobalShortcuts`) and virtual keyboard / `wtype` text insertion.
 - **Audio Device Hot-Plugging**:
   - Listen for USB microphone connect/disconnect events and automatically fall back to default input.
+
+---
+
+### 3. Dictation History & Clipboard Manager
+- **Transcription History Listing**:
+  - Scrollable chronological feed/list of all past dictated transcriptions in the UI.
+  - Metadata display for each entry: timestamp, audio duration (in ms/seconds), engine used, and confidence score.
+- **One-Click "Copy" Action**:
+  - Dedicated "Copy" button beside each historical entry allowing instant re-copying of any past text to the system clipboard.
+- **Search & Persistence**:
+  - Search bar to quickly filter historical transcriptions by keyword.
+  - Optional local SQLite / embedded storage persistence between application restarts.
+  - "Clear History" button with confirmation.

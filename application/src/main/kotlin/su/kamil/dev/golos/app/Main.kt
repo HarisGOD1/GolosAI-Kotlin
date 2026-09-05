@@ -26,6 +26,7 @@ fun main() {
     val audioCapture = JavaSoundAudioCapture()
     val hotkeyHook = GlobalHotkeyManager()
     val textInjector = ActiveWindowTextInjector()
+    textInjector.initialize()
 
     // 3. Voice Backend Engines
     val whisperModelPath = System.getenv("WHISPER_MODEL") ?: "models/ggml-base.bin"

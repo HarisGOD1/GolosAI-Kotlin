@@ -44,6 +44,25 @@ class ActiveWindowTextInjector(
 ) : TextInjectorPort {
 
     private val logger = LoggerFactory.getLogger(ActiveWindowTextInjector::class.java)
+    private var cachedRobot: Robot? = null
+
+    override fun initialize(): Result<Unit> = runCatching {
+        logger.info("Initializing text injector at startup...")
+        if (XtstLib.INSTANCE != null) {
+            logger.info("Native X11 XTEST extension detected and ready (zero-portal hardware input).")
+            return@runCatching
+        }
+
+        if (!java.awt.GraphicsEnvironment.isHeadless()) {
+            try {
+                logger.info("Prompting for OS input permissions upfront at startup. If your desktop displays a 'Share remote desktop / input' dialog, click Allow.")
+                cachedRobot = Robot().apply { autoDelay = 20 }
+                logger.info("AWT Robot input synthesizer successfully initialized at startup.")
+            } catch (e: Exception) {
+                logger.warn("AWT Robot startup pre-initialization could not obtain permissions: {}", e.message)
+            }
+        }
+    }
 
     override fun injectText(text: String): Result<Unit> = runCatching {
         if (text.isBlank()) {
@@ -93,8 +112,8 @@ class ActiveWindowTextInjector(
         if (!pasteSuccess && !java.awt.GraphicsEnvironment.isHeadless()) {
             try {
                 logger.info("Dispatching Ctrl+V paste keystroke via AWT Robot")
-                val robot = Robot()
-                robot.autoDelay = 20
+                val robot = cachedRobot ?: Robot().apply { autoDelay = 20 }
+                cachedRobot = robot
 
                 val modifierKey = if (isMac) KeyEvent.VK_META else KeyEvent.VK_CONTROL
                 robot.keyPress(modifierKey)
