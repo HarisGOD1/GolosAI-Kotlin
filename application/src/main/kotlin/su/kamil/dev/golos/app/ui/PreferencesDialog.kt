@@ -7,6 +7,7 @@ import kotlinx.coroutines.launch
 import su.kamil.dev.golos.app.DictationOrchestrator
 import su.kamil.dev.golos.core.model.AudioDevice
 import su.kamil.dev.golos.core.model.DictationState
+import su.kamil.dev.golos.core.model.HotkeyConfig
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
 import java.awt.*
 import java.awt.event.MouseAdapter
@@ -16,6 +17,7 @@ import javax.swing.border.EmptyBorder
 
 /**
  * Swing Preferences and Status Window for GolosAI.
+ * Allows configuring microphones, speech engines, and customizable multi-key hotkeys.
  */
 class PreferencesDialog(
     private val orchestrator: DictationOrchestrator,
@@ -26,6 +28,16 @@ class PreferencesDialog(
     private val micCombo = JComboBox<String>()
     private val engineCombo = JComboBox<String>()
     private val pttButton = JButton("🎙️ Hold to Speak (Push to Talk)")
+
+    // Hotkey Controls
+    private val ctrlCheck = JCheckBox("Ctrl")
+    private val shiftCheck = JCheckBox("Shift")
+    private val altCheck = JCheckBox("Alt")
+    private val metaCheck = JCheckBox("Super/Win")
+    private val keyField = JTextField("F8", 6)
+    private val activeHotkeyLabel = JLabel(orchestrator.currentHotkey.displayText)
+    private val applyHotkeyBtn = JButton("Apply")
+
     private val coroutineScope = CoroutineScope(Dispatchers.Default + Job())
     private var availableDevices: List<AudioDevice> = emptyList()
 
@@ -36,7 +48,7 @@ class PreferencesDialog(
 
     private fun initUi() {
         defaultCloseOperation = HIDE_ON_CLOSE
-        setSize(480, 360)
+        setSize(540, 460)
         setLocationRelativeTo(null)
         layout = BorderLayout(10, 10)
 
@@ -62,6 +74,7 @@ class PreferencesDialog(
             fill = GridBagConstraints.HORIZONTAL
             insets = Insets(6, 6, 6, 6)
             gridx = 0
+            gridy = 0
             weightx = 0.3
         }
 
@@ -94,16 +107,66 @@ class PreferencesDialog(
         }
         formPanel.add(engineCombo, gbc)
 
-        // 3. Hotkey Info
+        // 3. Active Hotkey Info
         gbc.gridx = 0
         gbc.gridy = 2
         gbc.weightx = 0.3
-        formPanel.add(JLabel("Global Hotkey:"), gbc)
+        formPanel.add(JLabel("Active Shortcut:"), gbc)
         gbc.gridx = 1
         gbc.weightx = 0.7
-        val hotkeyLabel = JLabel("F8 (Hold to speak)")
-        hotkeyLabel.font = Font(Font.MONOSPACED, Font.BOLD, 12)
-        formPanel.add(hotkeyLabel, gbc)
+        activeHotkeyLabel.font = Font(Font.MONOSPACED, Font.BOLD, 13)
+        activeHotkeyLabel.foreground = Color(0, 102, 204)
+        formPanel.add(activeHotkeyLabel, gbc)
+
+        // 4. Change Hotkey Configuration
+        gbc.gridx = 0
+        gbc.gridy = 3
+        gbc.weightx = 0.3
+        formPanel.add(JLabel("Change Shortcut:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+
+        val hotkeyEditPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+        hotkeyEditPanel.add(ctrlCheck)
+        hotkeyEditPanel.add(shiftCheck)
+        hotkeyEditPanel.add(altCheck)
+        hotkeyEditPanel.add(metaCheck)
+
+        keyField.toolTipText = "Key (e.g. L, F8, Space, Return)"
+        hotkeyEditPanel.add(JLabel("+ Key:"))
+        hotkeyEditPanel.add(keyField)
+
+        applyHotkeyBtn.addActionListener {
+            val primaryKey = keyField.text.trim().ifEmpty { "F8" }
+            val newConfig = HotkeyConfig(
+                keyName = primaryKey,
+                ctrl = ctrlCheck.isSelected,
+                shift = shiftCheck.isSelected,
+                alt = altCheck.isSelected,
+                meta = metaCheck.isSelected
+            )
+            val result = orchestrator.updateHotkey(newConfig)
+            if (result.isSuccess) {
+                activeHotkeyLabel.text = newConfig.displayText
+                activeHotkeyLabel.foreground = Color(0, 128, 0)
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Hotkey updated to: ${newConfig.displayText}",
+                    "Hotkey Registered",
+                    JOptionPane.INFORMATION_MESSAGE
+                )
+            } else {
+                activeHotkeyLabel.foreground = Color(180, 0, 0)
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Failed to register hotkey: ${result.exceptionOrNull()?.message}",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+                )
+            }
+        }
+        hotkeyEditPanel.add(applyHotkeyBtn)
+        formPanel.add(hotkeyEditPanel, gbc)
 
         add(formPanel, BorderLayout.CENTER)
 
@@ -147,7 +210,7 @@ class PreferencesDialog(
                 SwingUtilities.invokeLater {
                     when (state) {
                         DictationState.IDLE -> {
-                            statusLabel.text = "Status: IDLE (Ready)"
+                            statusLabel.text = "Status: IDLE (Ready - Hold ${activeHotkeyLabel.text})"
                             statusLabel.background = Color(230, 245, 230)
                             statusLabel.foreground = Color(30, 120, 30)
                             pttButton.text = "🎙️ Hold to Speak (Push to Talk)"

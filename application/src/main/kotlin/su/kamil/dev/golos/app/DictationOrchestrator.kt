@@ -29,6 +29,8 @@ class DictationOrchestrator(
 ) {
     private val logger = LoggerFactory.getLogger(DictationOrchestrator::class.java)
     var selectedDevice: AudioDevice? = null
+    var currentHotkey: HotkeyConfig = HotkeyConfig.DEFAULT
+        private set
 
     val state: StateFlow<DictationState> = stateMachine.state
 
@@ -36,12 +38,27 @@ class DictationOrchestrator(
      * Initializes hotkey binding and starts listening for push-to-talk events.
      */
     fun start(hotkeyConfig: HotkeyConfig = HotkeyConfig.DEFAULT): Result<Unit> {
+        this.currentHotkey = hotkeyConfig
         logger.info("Starting DictationOrchestrator with engine '{}' and key '{}'",
-            speechEngine.displayName, hotkeyConfig.keyName
+            speechEngine.displayName, hotkeyConfig.displayText
         )
 
         return hotkeyHook.register(
             config = hotkeyConfig,
+            onKeyDown = { onPushToTalkPressed() },
+            onKeyUp = { onPushToTalkReleased() }
+        )
+    }
+
+    /**
+     * Updates global hotkey binding at runtime.
+     */
+    fun updateHotkey(newConfig: HotkeyConfig): Result<Unit> {
+        logger.info("Rebinding hotkey to: {}", newConfig.displayText)
+        this.currentHotkey = newConfig
+        hotkeyHook.unregister()
+        return hotkeyHook.register(
+            config = newConfig,
             onKeyDown = { onPushToTalkPressed() },
             onKeyUp = { onPushToTalkReleased() }
         )

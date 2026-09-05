@@ -14,16 +14,49 @@ data class TranscriptionResult(
 )
 
 data class HotkeyConfig(
-    val keyCode: Int,
     val keyName: String,
-    val requiresModifiers: Boolean = false,
-    val modifiersMask: Int = 0
+    val ctrl: Boolean = false,
+    val shift: Boolean = false,
+    val alt: Boolean = false,
+    val meta: Boolean = false,
+    val keyCode: Int = 0
 ) {
+    val displayText: String
+        get() = buildString {
+            if (ctrl) append("Ctrl+")
+            if (alt) append("Alt+")
+            if (shift) append("Shift+")
+            if (meta) append("Meta+")
+            append(keyName)
+        }
+
     companion object {
-        // Default: F8 or CapsLock or Right Alt
-        val DEFAULT = HotkeyConfig(
-            keyCode = 19, // KeyCode for Pause/Break or custom default
-            keyName = "F8"
-        )
+        val DEFAULT = HotkeyConfig(keyName = "F8")
+
+        fun parse(input: String): HotkeyConfig {
+            val tokens = input.split("+", "-").map { it.trim() }.filter { it.isNotEmpty() }
+            var ctrl = false
+            var shift = false
+            var alt = false
+            var meta = false
+            var primaryKey = "F8"
+
+            for (token in tokens) {
+                when (token.lowercase()) {
+                    "ctrl", "control" -> ctrl = true
+                    "shift" -> shift = true
+                    "alt", "opt", "option" -> alt = true
+                    "meta", "cmd", "command", "super", "win" -> meta = true
+                    else -> primaryKey = token
+                }
+            }
+            return HotkeyConfig(
+                keyName = primaryKey,
+                ctrl = ctrl,
+                shift = shift,
+                alt = alt,
+                meta = meta
+            )
+        }
     }
 }
