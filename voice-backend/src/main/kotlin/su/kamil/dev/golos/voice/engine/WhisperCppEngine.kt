@@ -25,6 +25,8 @@ class WhisperCppEngine(
     var language: String = "auto",
     var device: InferenceDevice = InferenceDevice.CPU,
     var threads: Int = Runtime.getRuntime().availableProcessors().coerceAtMost(4),
+    var bilingualMode: Boolean = false,
+    var initialPrompt: String = "",
     override val id: String = "whisper-cpp",
     override val displayName: String = "Whisper.cpp (Local GGML)",
 ) : SpeechToTextEngine {
@@ -108,6 +110,32 @@ class WhisperCppEngine(
                 cmd.add("--no-gpu")
             }
 
+            if (bilingualMode && language != "auto" && language != "en") {
+                val langName =
+                    when (language) {
+                        "ru" -> "Russian"
+                        "fr" -> "French"
+                        "de" -> "German"
+                        "jp", "ja" -> "Japanese"
+                        "cn", "zh" -> "Chinese"
+                        "tr" -> "Turkish"
+                        "ar" -> "Arabic"
+                        "es" -> "Spanish"
+                        "it" -> "Italian"
+                        "pt" -> "Portuguese"
+                        "ko" -> "Korean"
+                        "uk" -> "Ukrainian"
+                        "pl" -> "Polish"
+                        "nl" -> "Dutch"
+                        else -> language
+                    }
+                cmd.add("--prompt")
+                cmd.add("Bilingual English and $langName conversation. Technical words, code, mixed vocabulary.")
+            } else if (initialPrompt.isNotBlank()) {
+                cmd.add("--prompt")
+                cmd.add(initialPrompt)
+            }
+
             logger.info(
                 "Executing whisper-cli (device: {}, lang: {}, model: {}): {}",
                 device,
@@ -124,7 +152,10 @@ class WhisperCppEngine(
                 } catch (e: Exception) {
                     logger.error("Failed to start whisper-cli process at path '{}'", resolvedBin, e)
                     return@withContext TranscriptionResult(
-                        text = "[Error: whisper-cli not found at '$resolvedBin'. Open Preferences -> 'Whisper Models & Hardware' and click 'Download whisper-cli' or select 'Mock Engine'.]",
+                        text =
+                            "[Error: whisper-cli not found at '$resolvedBin'. " +
+                                "Open Preferences -> 'Whisper Models & Hardware' and click " +
+                                "'Download whisper-cli' or select 'Mock Engine'.]",
                         durationMs = System.currentTimeMillis() - startTime,
                         isFinal = true,
                         confidence = 0.0f,

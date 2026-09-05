@@ -178,3 +178,42 @@
     - `windows-latest` (Windows 11-based GitHub runner, MSVC / Win32 toolchain verification)
     - `macos-15` (macOS Sequoia runner, Apple Silicon / ARM64 / Metal compatibility)
   - Executes full test suite (`testAll`), static code analysis (`detektAll`), style checking (`ktlintAll`), and reproducible artifact build (`build`).
+
+---
+
+### 20. Elimination of X11 Keylogger Rights Prompts via XkbSetDetectableAutoRepeat [Implemented]
+- Replaced continuous keyboard state polling (`XQueryKeymap`) with XKB native detectable auto-repeat (`XkbSetDetectableAutoRepeat`).
+- X server suppresses auto-repeat release events and delivers `KeyRelease` strictly upon physical key release.
+- Global key grab uses strictly `XGrabKey` on the configured keysym and root window.
+- Eliminates desktop security warnings and input-monitoring permission alerts on Linux/X11 desktops.
+
+---
+
+### 21. MIT-Licensed Typography and Font Scaling (Hack Font Family) [Implemented]
+- Bundled Hack font (`Hack-Regular.ttf` and `Hack-Bold.ttf`) under MIT license.
+- Global `FontManager` registers font with `GraphicsEnvironment` and updates Swing `UIManager` defaults.
+- Default UI font scaled to 14pt body text, 15pt bold headers, and 12-13pt indicators.
+
+---
+
+### 22. Multi-Language UI Localization and Expanded Spoken Languages [Implemented]
+- Interface localization in `AppLocalization` supporting 10 languages: English (EN), French (FR), German (DE), Russian (RU), Japanese (JP), Chinese (CN), Turkish (TR), Arabic (AR), Spanish (ES), Italian (IT).
+- Dynamic locale switching across all tabs, buttons, dialogs, and indicator bulbs.
+- UI language saved in YAML configuration (`uiLanguage`).
+- Expanded Whisper spoken language selector with 16 languages: Auto, EN, FR, DE, RU, JA, ZH, TR, AR, ES, IT, PT, KO, UK, PL, NL.
+
+---
+
+### 23. Bilingual Speech Recognition Model Support [Implemented]
+- Added bilingual mode option: English (EN) + any selected language.
+- Generates Whisper context prompts (`--prompt`) guiding recognition of mixed technical speech and code-switching vocabulary.
+- Configurable via checkbox in Whisper settings and persisted in YAML configuration (`engine.whisper.bilingualMode`).
+- Reflected in indicator status: `[Bilingual EN+<LANG>]`.
+
+---
+
+### 24. Collapsible 3-Bulb Indicator Floating Bar [Implemented]
+- Photorealistic custom `BulbWidget` rendering 3D glowing LED lamps with radial gradient highlights and aura halos.
+- 3 indicators: Application state (active/green), Voice state (idle/green, listening/amber, processing/red), and Mode state (timing, injection, hotkey, bilingual).
+- Window collapsible to a sleek floating mini-bar (580x78) with `isAlwaysOnTop = true` for persistent desktop presence during dictation.
+- Expand button restores full tabbed configuration window.

@@ -107,6 +107,7 @@ class SettingsManager(
     private fun toMap(c: GolosConfig): Map<String, Any> {
         return linkedMapOf(
             "version" to c.version,
+            "uiLanguage" to c.uiLanguage,
             "hotkey" to
                 linkedMapOf(
                     "keyName" to c.hotkey.keyName,
@@ -139,6 +140,7 @@ class SettingsManager(
                             "language" to c.engine.whisper.language,
                             "device" to c.engine.whisper.device,
                             "threads" to c.engine.whisper.threads,
+                            "bilingualMode" to c.engine.whisper.bilingualMode,
                         ),
                 ),
             "autostart" to
@@ -189,6 +191,7 @@ class SettingsManager(
                 language = whsMap["language"]?.toString() ?: "auto",
                 device = whsMap["device"]?.toString() ?: "CPU",
                 threads = (whsMap["threads"] as? Number)?.toInt() ?: 4,
+                bilingualMode = whsMap["bilingualMode"] as? Boolean ?: false,
             )
         val engine =
             EngineSettings(
@@ -202,8 +205,11 @@ class SettingsManager(
                 enabled = autoMap["enabled"] as? Boolean ?: false,
             )
 
+        val uiLanguage = map["uiLanguage"]?.toString() ?: "en"
+
         return GolosConfig(
             version = version,
+            uiLanguage = uiLanguage,
             hotkey = hotkey,
             insertion = insertion,
             audio = audio,

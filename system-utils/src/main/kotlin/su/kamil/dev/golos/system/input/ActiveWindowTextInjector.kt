@@ -56,18 +56,9 @@ class ActiveWindowTextInjector(
         runCatching {
             logger.info("Initializing text injector at startup...")
             if (XtstLib.INSTANCE != null) {
-                logger.info("Native X11 XTEST extension detected and ready (zero-portal hardware input).")
-                return@runCatching
-            }
-
-            if (!java.awt.GraphicsEnvironment.isHeadless()) {
-                try {
-                    logger.info("Pre-initializing AWT Robot. If your desktop prompts for RemoteDesktop/input sharing, click Allow.")
-                    cachedRobot = Robot().apply { autoDelay = 15 }
-                    logger.info("AWT Robot input synthesizer successfully initialized at startup.")
-                } catch (e: Exception) {
-                    logger.warn("AWT Robot startup pre-initialization could not obtain permissions: {}", e.message)
-                }
+                logger.info("Native X11 XTEST extension detected and ready (zero-portal direct input).")
+            } else {
+                logger.info("XTEST not present; text injector configured for xdotool or on-demand fallback.")
             }
         }
 

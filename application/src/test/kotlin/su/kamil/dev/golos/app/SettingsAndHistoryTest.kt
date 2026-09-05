@@ -118,6 +118,31 @@ class SettingsAndHistoryTest {
     }
 
     @Test
+    fun `SettingsManager persists bilingualMode and uiLanguage configuration`() {
+        val manager = SettingsManager(tempConfigFile)
+        val config =
+            GolosConfig(
+                uiLanguage = "fr",
+                engine =
+                    su.kamil.dev.golos.core.model.EngineSettings(
+                        selectedId = "whisper-cpp",
+                        whisper =
+                            su.kamil.dev.golos.core.model.WhisperSettings(
+                                language = "ru",
+                                bilingualMode = true,
+                            ),
+                    ),
+            )
+        manager.save(config)
+
+        val reloaded = manager.load()
+        assertEquals("fr", reloaded.uiLanguage)
+        assertEquals("whisper-cpp", reloaded.engine.selectedId)
+        assertEquals("ru", reloaded.engine.whisper.language)
+        assertTrue(reloaded.engine.whisper.bilingualMode)
+    }
+
+    @Test
     fun `HistoryManager records, persists and retrieves entries in order`() {
         val historyManager = HistoryManager(tempHistoryFile)
 

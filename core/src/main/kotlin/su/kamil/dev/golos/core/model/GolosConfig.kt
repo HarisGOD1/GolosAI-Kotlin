@@ -72,6 +72,7 @@ data class WhisperSettings(
     val language: String = "auto",
     val device: String = "CPU",
     val threads: Int = 4,
+    val bilingualMode: Boolean = false,
 )
 
 data class EngineSettings(
@@ -85,6 +86,7 @@ data class AutostartSettings(
 
 data class GolosConfig(
     val version: String = "1.0",
+    val uiLanguage: String = "en",
     val hotkey: HotkeySettings = HotkeySettings(),
     val insertion: InsertionSettings = InsertionSettings(),
     val audio: AudioSettings = AudioSettings(),

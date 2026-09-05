@@ -36,9 +36,9 @@ import javax.swing.filechooser.FileNameExtensionFilter
 
 /**
  * Swing UI for GolosAI Speech-to-Text Assistant.
- * Features a minimalist main dashboard with 3 primary status indicators,
- * secondary scrollable settings and model tabs, system tray integration,
- * and clean application termination.
+ * Uses MIT Hack typography, 3 glowing indicator bulbs, collapsible mini floating bar,
+ * multi-language UI localization (FR, DE, RU, JP, CN, TR, AR, ES, IT, EN),
+ * and bilingual speech recognition (EN + any language).
  */
 class PreferencesDialog(
     private val orchestrator: DictationOrchestrator,
@@ -49,28 +49,52 @@ class PreferencesDialog(
 ) : JFrame("GolosAI - Speech to Text Assistant") {
     private val logger = LoggerFactory.getLogger(PreferencesDialog::class.java)
 
+    // Color definitions for Bulbs and Accents
+    private val greenActive = Color(46, 204, 113)
+    private val greenGlow = Color(46, 204, 113, 140)
+    private val amberListening = Color(243, 156, 18)
+    private val amberGlow = Color(243, 156, 18, 160)
+    private val redProcessing = Color(231, 76, 60)
+    private val redGlow = Color(231, 76, 60, 160)
+    private val blueMode = Color(52, 152, 219)
+    private val blueGlow = Color(52, 152, 219, 140)
+
+    // Window Layout & Collapse State
+    private var isCollapsed = false
+    private var expandedBounds: Rectangle = Rectangle(100, 100, 680, 720)
+    private val mainContainer = JPanel(BorderLayout())
+    private val collapsedBarPanel = JPanel(BorderLayout(6, 0))
+
     private val tabbedPane = JTabbedPane()
 
-    // 3 Status Indicators for Main Page
-    private val appIndicator = createIndicatorBadge("● Application: Active", Color(40, 160, 70), Color(236, 249, 240))
-    private val speechIndicator = createIndicatorBadge("● Status: IDLE", Color(40, 160, 70), Color(236, 249, 240))
-    private val modeIndicator =
-        createIndicatorBadge("● Mode: [On Key Release] | [Direct Typing] | [F8]", Color(60, 65, 75), Color(242, 244, 247))
+    // 3 Glowing Bulbs for Main Dashboard Tab
+    private val dashboardAppBulb = BulbWidget(greenActive, greenGlow, "APP", "ACTIVE", compact = false)
+    private val dashboardVoiceBulb = BulbWidget(greenActive, greenGlow, "VOICE", "IDLE", compact = false)
+    private val dashboardModeBulb = BulbWidget(blueMode, blueGlow, "MODE", "[Rel | Direct | F8]", compact = false)
 
-    // Main Page Push-to-Talk and Recent Dictation
+    // 3 Glowing Bulbs for Collapsed Mini-Bar
+    private val miniAppBulb = BulbWidget(greenActive, greenGlow, "APP", "ACTIVE", compact = true)
+    private val miniVoiceBulb = BulbWidget(greenActive, greenGlow, "VOICE", "IDLE", compact = true)
+    private val miniModeBulb = BulbWidget(blueMode, blueGlow, "MODE", "F8", compact = true)
+
+    // Push-to-Talk Controls
     private val pttButton = JButton("🎙️ Hold to Speak (Push to Talk)")
+    private val miniPttButton = JButton("🎙️ Speak")
     private val recentDictationArea =
         JTextArea("No dictations yet. Hold your hotkey or press Hold to Speak.", 4, 30).apply {
             isEditable = false
             lineWrap = true
             wrapStyleWord = true
-            font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+            font = FontManager.regular(FontManager.INDICATOR_SIZE)
             background = Color(248, 249, 250)
             border = EmptyBorder(6, 8, 6, 8)
         }
 
     // System Tray
     private var trayIcon: TrayIcon? = null
+
+    // UI Language Selector
+    private val uiLanguageCombo = JComboBox(AppLanguage.entries.map { it.displayName }.toTypedArray())
 
     // Audio Provider & Microphone
     private val audioProviderCombo = JComboBox(arrayOf("JavaSound (Standard Cross-Platform)", "PortAudio (Alternative Native)"))
@@ -114,14 +138,34 @@ class PreferencesDialog(
     private val downloadProgressBar = JProgressBar(0, 100)
     private val downloadCancelFlag = AtomicBoolean(false)
 
+    // Spoken Languages (FR, DE, RU, JP, CN, TR, AR, ES, IT, PT, KO, UK, PL, NL, EN, Auto)
     private val languageCombo =
         JComboBox(
             arrayOf(
-                "Auto-Detect (auto)", "English (en)", "Russian (ru)", "Spanish (es)",
-                "German (de)", "French (fr)", "Italian (it)", "Chinese (zh)", "Japanese (ja)",
+                "Auto-Detect (auto)",
+                "English (en)",
+                "French (fr)",
+                "German (de)",
+                "Russian (ru)",
+                "Japanese (ja)",
+                "Chinese (zh)",
+                "Turkish (tr)",
+                "Arabic (ar)",
+                "Spanish (es)",
+                "Italian (it)",
+                "Portuguese (pt)",
+                "Korean (ko)",
+                "Ukrainian (uk)",
+                "Polish (pl)",
+                "Dutch (nl)",
             ),
         )
-    private val languageCodes = listOf("auto", "en", "ru", "es", "de", "fr", "it", "zh", "ja")
+    private val languageCodes =
+        listOf("auto", "en", "fr", "de", "ru", "ja", "zh", "tr", "ar", "es", "it", "pt", "ko", "uk", "pl", "nl")
+
+    // Bilingual Mode (EN + Selected Language)
+    private val bilingualModeCheck =
+        JCheckBox("Bilingual Mode: EN + Selected Language (mixed code-switching & technical terms)", false)
 
     private val deviceCombo =
         JComboBox(
@@ -140,10 +184,12 @@ class PreferencesDialog(
     private var availableDevices: List<AudioDevice> = emptyList()
 
     init {
+        FontManager.installGlobalSwingDefaults(14f)
         initUi()
         loadInitialConfig()
         observeState()
         wireHistoryListener()
+        setupLocalizationListener()
     }
 
     private fun initUi() {
@@ -155,61 +201,160 @@ class PreferencesDialog(
                 }
             },
         )
-        setSize(650, 680)
+        setSize(680, 720)
         setMinimumSize(Dimension(540, 480))
         setLocationRelativeTo(null)
+        expandedBounds = bounds
+
         layout = BorderLayout()
 
-        // Tab 1: Primary Minimal Dashboard
-        tabbedPane.addTab("Dashboard", createMainTab())
+        // Tab 1: Dashboard
+        tabbedPane.addTab(AppLocalization.tr("tab.dashboard"), createMainTab())
 
-        // Tab 2: Secondary Settings with ScrollPane
+        // Tab 2: Settings with ScrollPane
         val settingsScroll =
             JScrollPane(createGeneralTab(), JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER).apply {
                 border = null
                 viewport.background = Color(250, 250, 250)
                 verticalScrollBar.unitIncrement = 16
             }
-        tabbedPane.addTab("⚙️ Settings", settingsScroll)
+        tabbedPane.addTab(AppLocalization.tr("tab.settings"), settingsScroll)
 
-        // Tab 3: Secondary Whisper & Models with ScrollPane
+        // Tab 3: Whisper & Models with ScrollPane
         val whisperScroll =
             JScrollPane(createWhisperTab(), JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER).apply {
                 border = null
                 viewport.background = Color(250, 250, 250)
                 verticalScrollBar.unitIncrement = 16
             }
-        tabbedPane.addTab("🧠 Whisper & Models", whisperScroll)
+        tabbedPane.addTab(AppLocalization.tr("tab.whisper"), whisperScroll)
 
-        // Tab 4: Secondary History Tab
-        tabbedPane.addTab("📜 History", createHistoryTab())
+        // Tab 4: History
+        tabbedPane.addTab(AppLocalization.tr("tab.history"), createHistoryTab())
 
-        add(tabbedPane, BorderLayout.CENTER)
+        mainContainer.add(tabbedPane, BorderLayout.CENTER)
+        contentPane = mainContainer
 
+        setupCollapsedBar()
         setupSystemTray()
         syncInjectionConfig()
         renderStatus(orchestrator.state.value)
     }
 
+    private fun setupCollapsedBar() {
+        collapsedBarPanel.border = EmptyBorder(6, 10, 6, 10)
+        collapsedBarPanel.background = Color(245, 247, 250)
+
+        val bulbsBox = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+        bulbsBox.isOpaque = false
+        bulbsBox.add(miniAppBulb)
+        bulbsBox.add(miniVoiceBulb)
+        bulbsBox.add(miniModeBulb)
+
+        val actionsBox = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0))
+        actionsBox.isOpaque = false
+
+        styleMinimalistButton(miniPttButton)
+        miniPttButton.addMouseListener(
+            object : MouseAdapter() {
+                override fun mousePressed(e: MouseEvent?) { orchestrator.onPushToTalkPressed() }
+                override fun mouseReleased(e: MouseEvent?) { orchestrator.onPushToTalkReleased() }
+            },
+        )
+        actionsBox.add(miniPttButton)
+
+        val expandBtn = JButton("⛶ " + AppLocalization.tr("btn.expand"))
+        styleMinimalistButton(expandBtn, isAccent = true)
+        expandBtn.addActionListener { toggleCollapse() }
+        actionsBox.add(expandBtn)
+
+        val closeBtn = JButton("✖")
+        styleMinimalistButton(closeBtn)
+        closeBtn.foreground = Color(180, 40, 40)
+        closeBtn.toolTipText = AppLocalization.tr("btn.exit")
+        closeBtn.addActionListener { exitApplication() }
+        actionsBox.add(closeBtn)
+
+        collapsedBarPanel.add(bulbsBox, BorderLayout.WEST)
+        collapsedBarPanel.add(actionsBox, BorderLayout.EAST)
+
+        // Allow window dragging anywhere on collapsed bar
+        var mouseOffset: Point? = null
+        val dragListener = object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent) {
+                mouseOffset = e.point
+            }
+            override fun mouseDragged(e: MouseEvent) {
+                mouseOffset?.let { offset ->
+                    val cur = location
+                    setLocation(cur.x + e.x - offset.x, cur.y + e.y - offset.y)
+                }
+            }
+        }
+        collapsedBarPanel.addMouseListener(dragListener)
+        collapsedBarPanel.addMouseMotionListener(dragListener)
+    }
+
+    private fun toggleCollapse() {
+        isCollapsed = !isCollapsed
+        if (isCollapsed) {
+            expandedBounds = bounds
+            contentPane = collapsedBarPanel
+            isAlwaysOnTop = true
+            isResizable = false
+            setSize(580, 78)
+            minimumSize = Dimension(480, 70)
+            revalidate()
+            repaint()
+        } else {
+            isAlwaysOnTop = false
+            isResizable = true
+            contentPane = mainContainer
+            minimumSize = Dimension(540, 480)
+            bounds = expandedBounds
+            revalidate()
+            repaint()
+        }
+    }
+
     private fun createMainTab(): JPanel {
         val mainPanel = JPanel(BorderLayout(12, 14))
-        mainPanel.border = EmptyBorder(18, 20, 18, 20)
+        mainPanel.border = EmptyBorder(16, 18, 16, 18)
         mainPanel.background = Color(252, 252, 253)
 
-        // 3 Minimal Status Indicators
-        val indicatorsPanel = JPanel(GridLayout(3, 1, 0, 8))
-        indicatorsPanel.isOpaque = false
-        indicatorsPanel.add(appIndicator)
-        indicatorsPanel.add(speechIndicator)
-        indicatorsPanel.add(modeIndicator)
-        mainPanel.add(indicatorsPanel, BorderLayout.NORTH)
+        // Top Header: 3 Glowing Bulb Indicators + Collapse Button
+        val topHeader = JPanel(BorderLayout(8, 8))
+        topHeader.isOpaque = false
+
+        val bulbsPanel = JPanel(GridLayout(1, 3, 10, 0))
+        bulbsPanel.isOpaque = false
+
+        val appCard = createBulbCard(dashboardAppBulb)
+        val voiceCard = createBulbCard(dashboardVoiceBulb)
+        val modeCard = createBulbCard(dashboardModeBulb)
+
+        bulbsPanel.add(appCard)
+        bulbsPanel.add(voiceCard)
+        bulbsPanel.add(modeCard)
+        topHeader.add(bulbsPanel, BorderLayout.CENTER)
+
+        val collapseToolbar = JPanel(FlowLayout(FlowLayout.RIGHT, 0, 4))
+        collapseToolbar.isOpaque = false
+        val collapseBtn = JButton("💡 " + AppLocalization.tr("btn.collapse"))
+        styleMinimalistButton(collapseBtn, isAccent = true)
+        collapseBtn.toolTipText = "Collapse GolosAI window to floating 3-bulb indicator bar"
+        collapseBtn.addActionListener { toggleCollapse() }
+        collapseToolbar.add(collapseBtn)
+        topHeader.add(collapseToolbar, BorderLayout.SOUTH)
+
+        mainPanel.add(topHeader, BorderLayout.NORTH)
 
         // Center Content: Push to Talk + Recent Dictation
         val centerPanel = JPanel(BorderLayout(10, 12))
         centerPanel.isOpaque = false
 
-        pttButton.font = Font(Font.SANS_SERIF, Font.BOLD, 13)
-        pttButton.preferredSize = Dimension(200, 48)
+        pttButton.font = FontManager.bold(14f)
+        pttButton.preferredSize = Dimension(220, 52)
         pttButton.isFocusPainted = false
         pttButton.border = CompoundBorder(LineBorder(Color(180, 190, 205), 1, true), EmptyBorder(8, 16, 8, 16))
         pttButton.addMouseListener(
@@ -229,12 +374,12 @@ class PreferencesDialog(
         recentBox.isOpaque = false
         val recentHeader = JPanel(BorderLayout())
         recentHeader.isOpaque = false
-        val recentTitle = JLabel("Recent Speech Transcription:")
-        recentTitle.font = Font(Font.SANS_SERIF, Font.BOLD, 12)
+        val recentTitle = JLabel(AppLocalization.tr("label.recent_speech"))
+        recentTitle.font = FontManager.bold(13f)
         recentTitle.foreground = Color(70, 75, 85)
         recentHeader.add(recentTitle, BorderLayout.WEST)
 
-        val copyRecentBtn = JButton("📋 Copy")
+        val copyRecentBtn = JButton("📋 " + AppLocalization.tr("btn.copy"))
         styleMinimalistButton(copyRecentBtn)
         copyRecentBtn.addActionListener {
             val text = recentDictationArea.text.trim()
@@ -249,7 +394,7 @@ class PreferencesDialog(
         val recentScroll =
             JScrollPane(recentDictationArea).apply {
                 border = LineBorder(Color(220, 224, 230), 1, true)
-                preferredSize = Dimension(400, 120)
+                preferredSize = Dimension(400, 140)
             }
         recentBox.add(recentScroll, BorderLayout.CENTER)
         centerPanel.add(recentBox, BorderLayout.CENTER)
@@ -262,7 +407,7 @@ class PreferencesDialog(
 
         val leftActions = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
         leftActions.isOpaque = false
-        val hideTrayBtn = JButton("📥 Hide to Tray")
+        val hideTrayBtn = JButton("📥 " + AppLocalization.tr("btn.hide_tray"))
         styleMinimalistButton(hideTrayBtn)
         hideTrayBtn.addActionListener {
             isVisible = false
@@ -274,12 +419,12 @@ class PreferencesDialog(
 
         val rightActions = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
         rightActions.isOpaque = false
-        val openSettingsBtn = JButton("⚙️ Open Settings...")
+        val openSettingsBtn = JButton("⚙️ " + AppLocalization.tr("btn.open_settings"))
         styleMinimalistButton(openSettingsBtn)
         openSettingsBtn.addActionListener {
             tabbedPane.selectedIndex = 1
         }
-        val exitBtn = JButton("✖ Exit Application")
+        val exitBtn = JButton("✖ " + AppLocalization.tr("btn.exit"))
         styleMinimalistButton(exitBtn)
         exitBtn.foreground = Color(180, 40, 40)
         exitBtn.addActionListener {
@@ -294,30 +439,40 @@ class PreferencesDialog(
         return mainPanel
     }
 
+    private fun createBulbCard(bulb: BulbWidget): JPanel {
+        return JPanel(BorderLayout()).apply {
+            background = Color(248, 250, 252)
+            border = CompoundBorder(LineBorder(Color(220, 226, 235), 1, true), EmptyBorder(6, 6, 6, 6))
+            add(bulb, BorderLayout.CENTER)
+        }
+    }
+
     private fun styleMinimalistButton(
         btn: JButton,
         isAccent: Boolean = false,
     ) {
-        btn.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        btn.font = FontManager.regular(FontManager.INDICATOR_SIZE)
         btn.margin = Insets(4, 8, 4, 8)
         btn.isFocusPainted = false
         if (!isAccent) {
             btn.background = Color(248, 249, 250)
-            btn.border = CompoundBorder(LineBorder(Color(215, 220, 225), 1, true), EmptyBorder(3, 8, 3, 8))
+            btn.border = CompoundBorder(LineBorder(Color(215, 220, 225), 1, true), EmptyBorder(4, 8, 4, 8))
+        } else {
+            btn.background = Color(238, 244, 255)
+            btn.foreground = Color(30, 90, 200)
+            btn.border = CompoundBorder(LineBorder(Color(180, 205, 245), 1, true), EmptyBorder(4, 8, 4, 8))
         }
     }
 
-    private fun createIndicatorBadge(
-        text: String,
-        fg: Color,
-        bg: Color,
-    ): JLabel {
-        return JLabel(text, SwingConstants.CENTER).apply {
-            font = Font(Font.SANS_SERIF, Font.BOLD, 12)
-            isOpaque = true
-            foreground = fg
-            background = bg
-            border = CompoundBorder(LineBorder(fg.darker(), 1, true), EmptyBorder(7, 12, 7, 12))
+    private fun setupLocalizationListener() {
+        AppLocalization.addLanguageChangeListener {
+            SwingUtilities.invokeLater {
+                tabbedPane.setTitleAt(0, AppLocalization.tr("tab.dashboard"))
+                tabbedPane.setTitleAt(1, "⚙️ " + AppLocalization.tr("tab.settings"))
+                tabbedPane.setTitleAt(2, "🧠 " + AppLocalization.tr("tab.whisper"))
+                tabbedPane.setTitleAt(3, "📜 " + AppLocalization.tr("tab.history"))
+                renderStatus(orchestrator.state.value)
+            }
         }
     }
 
@@ -388,16 +543,11 @@ class PreferencesDialog(
 
         val fillColor =
             when (state) {
-                DictationState.IDLE -> Color(46, 204, 113) // Green
-                DictationState.RECORDING -> Color(241, 196, 15) // Yellow/Amber
-                DictationState.PROCESSING -> Color(231, 76, 60) // Red
+                DictationState.IDLE -> greenActive
+                DictationState.RECORDING -> amberListening
+                DictationState.PROCESSING -> redProcessing
             }
-        val borderColor =
-            when (state) {
-                DictationState.IDLE -> Color(30, 132, 73)
-                DictationState.RECORDING -> Color(183, 149, 11)
-                DictationState.PROCESSING -> Color(176, 58, 46)
-            }
+        val borderColor = fillColor.darker()
 
         g2d.color = fillColor
         g2d.fillOval(1, 1, size - 3, size - 3)
@@ -408,7 +558,7 @@ class PreferencesDialog(
     }
 
     fun exitApplication() {
-        logger.info("Shutting down GolosAI and terminating JVM process...")
+        logger.info("Shutting down GolosAI and terminating JVM process cleanly...")
         try {
             if (SystemTray.isSupported() && trayIcon != null) {
                 SystemTray.getSystemTray().remove(trayIcon)
@@ -422,23 +572,36 @@ class PreferencesDialog(
 
     private fun createGeneralTab(): JPanel {
         val panel = JPanel(GridBagLayout())
-        panel.border = EmptyBorder(12, 14, 12, 14)
+        panel.border = EmptyBorder(14, 16, 14, 16)
         val gbc =
             GridBagConstraints().apply {
                 fill = GridBagConstraints.HORIZONTAL
-                insets = Insets(5, 6, 5, 6)
+                insets = Insets(6, 6, 6, 6)
                 gridx = 0
                 gridy = 0
-                weightx = 0.3
+                weightx = 0.32
             }
 
+        // 0. Interface Language Selector (FR, DE, RU, JP, CN, TR, AR, ES, IT, EN)
+        val langLabel = JLabel(AppLocalization.tr("label.ui_language"))
+        panel.add(langLabel, gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.68
+        uiLanguageCombo.addActionListener {
+            val selected = AppLanguage.entries.getOrNull(uiLanguageCombo.selectedIndex) ?: AppLanguage.EN
+            AppLocalization.setLanguage(selected)
+            saveCurrentConfig()
+        }
+        panel.add(uiLanguageCombo, gbc)
+
         // 1. Audio Provider Selection
-        val provLabel = JLabel("Audio Provider:")
-        provLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.gridx = 0
+        gbc.gridy = 1
+        gbc.weightx = 0.32
+        val provLabel = JLabel(AppLocalization.tr("label.audio_provider"))
         panel.add(provLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
-        audioProviderCombo.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.weightx = 0.68
         audioProviderCombo.addActionListener {
             val isPortAudio = audioProviderCombo.selectedIndex == 1
             orchestrator.audioCapture =
@@ -454,16 +617,14 @@ class PreferencesDialog(
 
         // 2. Microphone / Output Monitor Device Selection
         gbc.gridx = 0
-        gbc.gridy = 1
-        gbc.weightx = 0.3
-        val micLabel = JLabel("Audio Input / Monitor:")
-        micLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.gridy = 2
+        gbc.weightx = 0.32
+        val micLabel = JLabel(AppLocalization.tr("label.microphone"))
         panel.add(micLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
+        gbc.weightx = 0.68
         val micPanel = JPanel(BorderLayout(0, 4))
         refreshMicrophoneList()
-        micCombo.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         micCombo.addActionListener {
             val idx = micCombo.selectedIndex
             if (idx in availableDevices.indices) {
@@ -473,22 +634,20 @@ class PreferencesDialog(
         }
         micPanel.add(micCombo, BorderLayout.NORTH)
         val clueLabel = JLabel("💡 Tip: Select 🎙️ [Microphone] for voice, or 🎧 [System Output Monitor] for desktop audio/calls.")
-        clueLabel.font = Font(Font.SANS_SERIF, Font.ITALIC, 11)
+        clueLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
         clueLabel.foreground = Color(100, 100, 100)
         micPanel.add(clueLabel, BorderLayout.SOUTH)
         panel.add(micPanel, gbc)
 
         // 3. Speech-to-Text Engine Selection
         gbc.gridx = 0
-        gbc.gridy = 2
-        gbc.weightx = 0.3
-        val engLabel = JLabel("Recognition Engine:")
-        engLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.gridy = 3
+        gbc.weightx = 0.32
+        val engLabel = JLabel(AppLocalization.tr("label.engine"))
         panel.add(engLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
+        gbc.weightx = 0.68
         availableEngines.forEach { engineCombo.addItem(it.displayName) }
-        engineCombo.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         engineCombo.addActionListener {
             val idx = engineCombo.selectedIndex
             if (idx in availableEngines.indices) {
@@ -500,13 +659,12 @@ class PreferencesDialog(
 
         // 4. Global Push-to-Talk Hotkey
         gbc.gridx = 0
-        gbc.gridy = 3
-        gbc.weightx = 0.3
-        val hkLabel = JLabel("Push-to-Talk Hotkey:")
-        hkLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.gridy = 4
+        gbc.weightx = 0.32
+        val hkLabel = JLabel(AppLocalization.tr("label.hotkey"))
         panel.add(hkLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
+        gbc.weightx = 0.68
         val hotkeyOuterPanel = JPanel(BorderLayout(0, 4))
 
         styleMinimalistButton(recordBtn)
@@ -584,12 +742,6 @@ class PreferencesDialog(
         hotkeyOuterPanel.add(recordBtn, BorderLayout.NORTH)
 
         val hotkeyEditPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
-        ctrlCheck.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
-        shiftCheck.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
-        altCheck.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
-        metaCheck.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
-        keyField.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
-
         hotkeyEditPanel.add(ctrlCheck)
         hotkeyEditPanel.add(shiftCheck)
         hotkeyEditPanel.add(altCheck)
@@ -597,7 +749,6 @@ class PreferencesDialog(
 
         keyField.toolTipText = "Key (e.g. L, F8, Space, Return)"
         val plusKeyLabel = JLabel("+ Key:")
-        plusKeyLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         hotkeyEditPanel.add(plusKeyLabel)
         hotkeyEditPanel.add(keyField)
 
@@ -640,14 +791,12 @@ class PreferencesDialog(
 
         // 5. Text Insertion Mode
         gbc.gridx = 0
-        gbc.gridy = 4
-        gbc.weightx = 0.3
-        val insLabel = JLabel("Text Insertion Mode:")
-        insLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.gridy = 5
+        gbc.weightx = 0.32
+        val insLabel = JLabel(AppLocalization.tr("label.insertion_mode"))
         panel.add(insLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
-        insertionModeCombo.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.weightx = 0.68
         insertionModeCombo.addActionListener {
             syncInjectionConfig()
             saveCurrentConfig()
@@ -656,14 +805,12 @@ class PreferencesDialog(
 
         // 6. Insertion Timing (On the Fly vs On Release)
         gbc.gridx = 0
-        gbc.gridy = 5
-        gbc.weightx = 0.3
-        val timingLabel = JLabel("Insertion Timing:")
-        timingLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.gridy = 6
+        gbc.weightx = 0.32
+        val timingLabel = JLabel(AppLocalization.tr("label.timing"))
         panel.add(timingLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
-        timingCombo.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.weightx = 0.68
         timingCombo.addActionListener {
             syncInjectionConfig()
             saveCurrentConfig()
@@ -673,16 +820,13 @@ class PreferencesDialog(
 
         // 7. Clipboard Privacy Options
         gbc.gridx = 0
-        gbc.gridy = 6
-        gbc.weightx = 0.3
-        val privLabel = JLabel("Clipboard Privacy:")
-        privLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.gridy = 7
+        gbc.weightx = 0.32
+        val privLabel = JLabel(AppLocalization.tr("label.clipboard_privacy"))
         panel.add(privLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
+        gbc.weightx = 0.68
         val privacyPanel = JPanel(GridLayout(2, 1, 0, 2))
-        copyClipboardCheck.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
-        fallbackClipboardCheck.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         copyClipboardCheck.addActionListener {
             syncInjectionConfig()
             saveCurrentConfig()
@@ -697,14 +841,12 @@ class PreferencesDialog(
 
         // 8. System Autostart
         gbc.gridx = 0
-        gbc.gridy = 7
-        gbc.weightx = 0.3
-        val autoLabel = JLabel("System Startup:")
-        autoLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.gridy = 8
+        gbc.weightx = 0.32
+        val autoLabel = JLabel(AppLocalization.tr("label.system_startup"))
         panel.add(autoLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
-        autostartCheck.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.weightx = 0.68
         autostartCheck.addActionListener {
             val enabled = autostartCheck.isSelected
             autoStartManager.setAutoStart(enabled)
@@ -714,13 +856,13 @@ class PreferencesDialog(
 
         // 9. Configuration Toolbar (Reset, Export, Import)
         gbc.gridx = 0
-        gbc.gridy = 8
+        gbc.gridy = 9
         gbc.gridwidth = 2
         gbc.weightx = 1.0
         val configBar = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 6))
-        val resetBtn = JButton("↺ Reset to Defaults")
-        val exportBtn = JButton("📤 Export Settings...")
-        val importBtn = JButton("📥 Import Settings...")
+        val resetBtn = JButton("↺ " + AppLocalization.tr("btn.reset_defaults"))
+        val exportBtn = JButton("📤 " + AppLocalization.tr("btn.export"))
+        val importBtn = JButton("📥 " + AppLocalization.tr("btn.import"))
 
         styleMinimalistButton(resetBtn)
         styleMinimalistButton(exportBtn)
@@ -796,26 +938,24 @@ class PreferencesDialog(
 
     private fun createWhisperTab(): JPanel {
         val panel = JPanel(GridBagLayout())
-        panel.border = EmptyBorder(12, 14, 12, 14)
+        panel.border = EmptyBorder(14, 16, 14, 16)
         val gbc =
             GridBagConstraints().apply {
                 fill = GridBagConstraints.HORIZONTAL
-                insets = Insets(5, 6, 5, 6)
+                insets = Insets(6, 6, 6, 6)
                 gridx = 0
                 gridy = 0
-                weightx = 0.3
+                weightx = 0.32
             }
 
         // 1. Whisper Executable Management
-        val execLabel = JLabel("Whisper Executable:")
-        execLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        val execLabel = JLabel(AppLocalization.tr("label.whisper_exec"))
         panel.add(execLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
+        gbc.weightx = 0.68
 
         val binBox = JPanel(BorderLayout(4, 4))
         val binInputRow = JPanel(BorderLayout(4, 0))
-        binaryPathField.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         binInputRow.add(binaryPathField, BorderLayout.CENTER)
 
         val binBtnRow = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0))
@@ -825,7 +965,7 @@ class PreferencesDialog(
         binBtnRow.add(downloadBinaryBtn)
         binInputRow.add(binBtnRow, BorderLayout.EAST)
         binBox.add(binInputRow, BorderLayout.NORTH)
-        binaryStatusLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
+        binaryStatusLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
         binBox.add(binaryStatusLabel, BorderLayout.SOUTH)
 
         browseBinaryBtn.addActionListener {
@@ -856,15 +996,13 @@ class PreferencesDialog(
         // 2. Multilingual Model Selector
         gbc.gridx = 0
         gbc.gridy = 1
-        gbc.weightx = 0.3
-        val modLabel = JLabel("Multilingual Model:")
-        modLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.weightx = 0.32
+        val modLabel = JLabel(AppLocalization.tr("label.multilingual_model"))
         panel.add(modLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
+        gbc.weightx = 0.68
         WhisperModelInfo.AVAILABLE_MODELS.forEach { modelCombo.addItem(it.name) }
         modelCombo.selectedIndex = 1 // default to Base
-        modelCombo.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         modelCombo.addActionListener {
             updateModelStatus()
             saveCurrentConfig()
@@ -874,15 +1012,13 @@ class PreferencesDialog(
         // 3. Model Status & Download Button
         gbc.gridx = 0
         gbc.gridy = 2
-        gbc.weightx = 0.3
-        val statLabel = JLabel("Model File Status:")
-        statLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.weightx = 0.32
+        val statLabel = JLabel("Model Status:")
         panel.add(statLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
+        gbc.weightx = 0.68
 
         val downloadActionPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0))
-        modelStatusLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         downloadActionPanel.add(modelStatusLabel)
         styleMinimalistButton(downloadModelBtn)
         downloadActionPanel.add(downloadModelBtn)
@@ -892,46 +1028,58 @@ class PreferencesDialog(
         // 4. Download Progress
         gbc.gridx = 0
         gbc.gridy = 3
-        gbc.weightx = 0.3
+        gbc.weightx = 0.32
         val progLabel = JLabel("Download Progress:")
-        progLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         panel.add(progLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
+        gbc.weightx = 0.68
         downloadProgressBar.isStringPainted = true
         downloadProgressBar.string = "Idle"
-        downloadProgressBar.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
+        downloadProgressBar.font = FontManager.regular(FontManager.SMALL_SIZE)
         panel.add(downloadProgressBar, gbc)
 
-        // 5. Language Selection
+        // 5. Spoken Language Selection (Extended: FR, DE, RU, JP, CN, TR, AR, ES, IT, PT, KO, UK, PL, NL, EN)
         gbc.gridx = 0
         gbc.gridy = 4
-        gbc.weightx = 0.3
-        val langLabel = JLabel("Spoken Language:")
-        langLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
-        panel.add(langLabel, gbc)
+        gbc.weightx = 0.32
+        val spokenLangLabel = JLabel(AppLocalization.tr("label.spoken_lang"))
+        panel.add(spokenLangLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
-        languageCombo.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.weightx = 0.68
         languageCombo.addActionListener {
             val idx = languageCombo.selectedIndex
             if (idx in languageCodes.indices && whisperEngine != null) {
                 whisperEngine.language = languageCodes[idx]
                 saveCurrentConfig()
+                renderStatus(orchestrator.state.value)
             }
         }
         panel.add(languageCombo, gbc)
 
-        // 6. Inference Device Selection (CPU vs GPU)
+        // 6. Bilingual Mode Checkbox (EN + Selected Language)
         gbc.gridx = 0
         gbc.gridy = 5
-        gbc.weightx = 0.3
-        val devLabel = JLabel("Inference Device:")
-        devLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.weightx = 0.32
+        val bilingualLabel = JLabel("Bilingual Mode:")
+        panel.add(bilingualLabel, gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.68
+        bilingualModeCheck.font = FontManager.regular(FontManager.INDICATOR_SIZE)
+        bilingualModeCheck.addActionListener {
+            whisperEngine?.bilingualMode = bilingualModeCheck.isSelected
+            saveCurrentConfig()
+            renderStatus(orchestrator.state.value)
+        }
+        panel.add(bilingualModeCheck, gbc)
+
+        // 7. Inference Device Selection (CPU vs GPU)
+        gbc.gridx = 0
+        gbc.gridy = 6
+        gbc.weightx = 0.32
+        val devLabel = JLabel(AppLocalization.tr("label.inference_device"))
         panel.add(devLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
-        deviceCombo.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        gbc.weightx = 0.68
         deviceCombo.addActionListener {
             if (whisperEngine != null) {
                 whisperEngine.device = if (deviceCombo.selectedIndex == 0) InferenceDevice.CPU else InferenceDevice.GPU
@@ -940,16 +1088,15 @@ class PreferencesDialog(
         }
         panel.add(deviceCombo, gbc)
 
-        // 7. Transcribe Audio File
+        // 8. Transcribe Audio File
         gbc.gridx = 0
-        gbc.gridy = 6
-        gbc.weightx = 0.3
+        gbc.gridy = 7
+        gbc.weightx = 0.32
         val fileLabel = JLabel("Audio File Dictation:")
-        fileLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         panel.add(fileLabel, gbc)
         gbc.gridx = 1
-        gbc.weightx = 0.7
-        val transcribeFileBtn = JButton("📁 Transcribe Audio File (WAV, MP3, FLAC)...")
+        gbc.weightx = 0.68
+        val transcribeFileBtn = JButton("📁 " + AppLocalization.tr("btn.transcribe_file"))
         styleMinimalistButton(transcribeFileBtn)
         transcribeFileBtn.addActionListener {
             promptAndTranscribeAudioFile()
@@ -968,22 +1115,20 @@ class PreferencesDialog(
         // Top Filter & Action Bar
         val topBar = JPanel(BorderLayout(6, 6))
         val searchBox = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
-        val sLabel = JLabel("Search History:")
-        sLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
+        val sLabel = JLabel(AppLocalization.tr("label.search_history"))
         searchBox.add(sLabel)
-        historySearchField.font = Font(Font.SANS_SERIF, Font.PLAIN, 12)
         searchBox.add(historySearchField)
-        val historyTranscribeBtn = JButton("📁 Transcribe File...")
+        val historyTranscribeBtn = JButton("📁 " + AppLocalization.tr("btn.transcribe_file"))
         styleMinimalistButton(historyTranscribeBtn)
         historyTranscribeBtn.addActionListener { promptAndTranscribeAudioFile() }
         searchBox.add(historyTranscribeBtn)
         topBar.add(searchBox, BorderLayout.WEST)
 
         val rightBox = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
-        historyCountLabel.font = Font(Font.SANS_SERIF, Font.ITALIC, 11)
+        historyCountLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
         rightBox.add(historyCountLabel)
 
-        val clearBtn = JButton("Clear History")
+        val clearBtn = JButton(AppLocalization.tr("btn.clear_history"))
         styleMinimalistButton(clearBtn)
         clearBtn.addActionListener {
             val confirm =
@@ -1076,7 +1221,7 @@ class PreferencesDialog(
         val dateStr = dateFormat.format(Date(entry.timestamp))
         val durSec = String.format("%.1fs", entry.durationMs / 1000.0)
         val infoLabel = JLabel("$dateStr  |  $durSec  |  ${entry.engine.ifEmpty { "GolosAI" }}")
-        infoLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
+        infoLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
         infoLabel.foreground = Color(100, 110, 120)
         topRow.add(infoLabel, BorderLayout.WEST)
 
@@ -1101,7 +1246,7 @@ class PreferencesDialog(
         textArea.lineWrap = true
         textArea.wrapStyleWord = true
         textArea.background = Color(250, 252, 255)
-        textArea.font = Font(Font.SANS_SERIF, Font.PLAIN, 13)
+        textArea.font = FontManager.regular(13f)
         card.add(textArea, BorderLayout.CENTER)
 
         return card
@@ -1277,6 +1422,11 @@ class PreferencesDialog(
     }
 
     private fun applyConfigToUi(c: GolosConfig) {
+        // UI Language
+        val appLang = AppLanguage.fromCode(c.uiLanguage)
+        uiLanguageCombo.selectedIndex = AppLanguage.entries.indexOf(appLang).coerceAtLeast(0)
+        AppLocalization.setLanguage(appLang)
+
         // Hotkey
         val hk = c.hotkey.toHotkeyConfig()
         orchestrator.updateHotkey(hk)
@@ -1335,6 +1485,9 @@ class PreferencesDialog(
         if (langIdx != -1) languageCombo.selectedIndex = langIdx
         deviceCombo.selectedIndex = if (c.engine.whisper.device == "GPU") 1 else 0
 
+        bilingualModeCheck.isSelected = c.engine.whisper.bilingualMode
+        whisperEngine?.bilingualMode = c.engine.whisper.bilingualMode
+
         updateBinaryStatus()
         updateModelStatus()
         renderStatus(orchestrator.state.value)
@@ -1345,10 +1498,12 @@ class PreferencesDialog(
         val ins = orchestrator.injectionConfig
         val selectedEngineId = if (orchestrator.speechEngine is WhisperCppEngine) "whisper-cpp" else "mock"
         val isPortAudio = audioProviderCombo.selectedIndex == 1
+        val selectedLang = AppLanguage.entries.getOrNull(uiLanguageCombo.selectedIndex) ?: AppLanguage.EN
 
         val config =
             GolosConfig(
                 version = "1.0",
+                uiLanguage = selectedLang.code,
                 hotkey = HotkeySettings.from(hk),
                 insertion = InsertionSettings.from(ins),
                 audio =
@@ -1366,6 +1521,7 @@ class PreferencesDialog(
                                 modelName = WhisperModelInfo.AVAILABLE_MODELS.getOrNull(modelCombo.selectedIndex)?.name ?: "base",
                                 language = whisperEngine?.language ?: "auto",
                                 device = whisperEngine?.device?.name ?: "CPU",
+                                bilingualMode = bilingualModeCheck.isSelected,
                             ),
                     ),
                 autostart =
@@ -1387,37 +1543,56 @@ class PreferencesDialog(
     }
 
     private fun renderStatus(state: DictationState) {
-        val timingStr = if (timingCombo.selectedIndex == 0) "On Key Release" else "On the Fly"
-        val insertStr = if (insertionModeCombo.selectedIndex == 0) "Direct Typing" else "Clipboard"
+        val timingShort = if (timingCombo.selectedIndex == 0) "Rel" else "Live"
+        val insertShort = if (insertionModeCombo.selectedIndex == 0) "Direct" else "Clip"
         val hotkeyStr = orchestrator.currentHotkey.displayText
-        modeIndicator.text = "● Mode: [$timingStr] | [$insertStr] | [$hotkeyStr]"
+        val bilingualSuffix = if (bilingualModeCheck.isSelected && whisperEngine?.language != "auto" && whisperEngine?.language != "en") {
+            " [EN+${whisperEngine?.language?.uppercase()}]"
+        } else {
+            ""
+        }
 
+        val modeDisplay = "[$timingShort | $insertShort | $hotkeyStr]$bilingualSuffix"
+
+        // 1. Update App Bulb
+        dashboardAppBulb.updateState(greenActive, greenGlow, AppLocalization.tr("bulb.app.title"), AppLocalization.tr("bulb.app.active"))
+        miniAppBulb.updateState(greenActive, greenGlow, AppLocalization.tr("bulb.app.title"), AppLocalization.tr("bulb.app.active"))
+
+        // 2. Update Voice Bulb & PTT Buttons
         when (state) {
             DictationState.IDLE -> {
-                speechIndicator.text = "● Status: IDLE"
-                speechIndicator.foreground = Color(40, 160, 70)
-                speechIndicator.background = Color(236, 249, 240)
-                speechIndicator.border = CompoundBorder(LineBorder(Color(40, 160, 70), 1, true), EmptyBorder(7, 12, 7, 12))
-                pttButton.text = "🎙️ Hold to Speak ($hotkeyStr)"
+                val idleText = AppLocalization.tr("bulb.voice.idle")
+                dashboardVoiceBulb.updateState(greenActive, greenGlow, AppLocalization.tr("bulb.voice.title"), idleText)
+                miniVoiceBulb.updateState(greenActive, greenGlow, AppLocalization.tr("bulb.voice.title"), idleText)
+                pttButton.text = "🎙️ " + AppLocalization.tr("btn.hold_to_speak") + " ($hotkeyStr)"
                 pttButton.background = null
+                miniPttButton.text = "🎙️ Speak"
+                miniPttButton.background = null
             }
             DictationState.RECORDING -> {
-                speechIndicator.text = "● Status: LISTENING"
-                speechIndicator.foreground = Color(190, 120, 0)
-                speechIndicator.background = Color(255, 250, 225)
-                speechIndicator.border = CompoundBorder(LineBorder(Color(190, 120, 0), 1, true), EmptyBorder(7, 12, 7, 12))
-                pttButton.text = "🔴 Recording... Release to transcribe"
+                val recText = AppLocalization.tr("bulb.voice.listening")
+                dashboardVoiceBulb.updateState(amberListening, amberGlow, AppLocalization.tr("bulb.voice.title"), recText)
+                miniVoiceBulb.updateState(amberListening, amberGlow, AppLocalization.tr("bulb.voice.title"), recText)
+                pttButton.text = "🔴 " + AppLocalization.tr("btn.recording")
                 pttButton.background = Color(255, 235, 235)
+                miniPttButton.text = "🔴 Rec"
+                miniPttButton.background = Color(255, 235, 235)
             }
             DictationState.PROCESSING -> {
-                speechIndicator.text = "● Status: PROCESSING"
-                speechIndicator.foreground = Color(210, 45, 45)
-                speechIndicator.background = Color(255, 238, 238)
-                speechIndicator.border = CompoundBorder(LineBorder(Color(210, 45, 45), 1, true), EmptyBorder(7, 12, 7, 12))
-                pttButton.text = "⏳ Processing speech..."
+                val procText = AppLocalization.tr("bulb.voice.processing")
+                dashboardVoiceBulb.updateState(redProcessing, redGlow, AppLocalization.tr("bulb.voice.title"), procText)
+                miniVoiceBulb.updateState(redProcessing, redGlow, AppLocalization.tr("bulb.voice.title"), procText)
+                pttButton.text = "⏳ " + AppLocalization.tr("btn.processing")
                 pttButton.background = Color(245, 245, 245)
+                miniPttButton.text = "⏳ Proc"
+                miniPttButton.background = Color(245, 245, 245)
             }
         }
+
+        // 3. Update Mode Bulb
+        dashboardModeBulb.updateState(blueMode, blueGlow, AppLocalization.tr("bulb.mode.title"), modeDisplay)
+        miniModeBulb.updateState(blueMode, blueGlow, AppLocalization.tr("bulb.mode.title"), modeDisplay)
+
         updateTrayIcon(state)
     }
 
@@ -1431,9 +1606,8 @@ class PreferencesDialog(
             )
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             val audioFile = chooser.selectedFile
-            speechIndicator.text = "● Status: TRANSCRIBING FILE"
-            speechIndicator.foreground = Color(190, 120, 0)
-            speechIndicator.background = Color(255, 250, 225)
+            dashboardVoiceBulb.updateState(amberListening, amberGlow, "VOICE", "TRANSCRIBING")
+            miniVoiceBulb.updateState(amberListening, amberGlow, "VOICE", "TRANSCRIBING")
 
             coroutineScope.launch {
                 val result = orchestrator.transcribeFile(audioFile)
@@ -1474,7 +1648,7 @@ class PreferencesDialog(
         textArea.lineWrap = true
         textArea.wrapStyleWord = true
         textArea.isEditable = false
-        textArea.font = Font(Font.SANS_SERIF, Font.PLAIN, 13)
+        textArea.font = FontManager.regular(13f)
         textArea.margin = Insets(8, 8, 8, 8)
         val scrollPane = JScrollPane(textArea)
         scrollPane.border = CompoundBorder(EmptyBorder(0, 14, 0, 14), LineBorder(Color.LIGHT_GRAY))

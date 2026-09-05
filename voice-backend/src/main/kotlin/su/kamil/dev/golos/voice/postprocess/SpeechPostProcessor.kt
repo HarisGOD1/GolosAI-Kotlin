@@ -225,8 +225,10 @@ class SpeechPostProcessor(
     }
 
     private fun formatUnitsOfMeasurement(text: String): String {
-        val unitsPattern = "(?iU)\\b(\\d+)\\s+(мегабайт[а-я]*|гигабайт[а-я]*|килобайт[а-я]*|" +
-            "байт[а-я]*|секунд[а-я]*|минут[а-я]*|час[а-я]*|рубл[а-я]*|доллар[а-я]*|процент[а-я]*|см|мм|м|км|кг|г)\\b"
+        val unitsPattern =
+            "(?iU)\\b(\\d+)\\s+(мегабайт[а-я]*|гигабайт[а-я]*|килобайт[а-я]*|" +
+                "байт[а-я]*|секунд[а-я]*|минут[а-я]*|час[а-я]*|рубл[а-я]*|" +
+                "доллар[а-я]*|процент[а-я]*|см|мм|м|км|кг|г)\\b"
         val unitsRegex = Regex(unitsPattern)
         return unitsRegex.replace(text, "$1\u00A0$2")
     }

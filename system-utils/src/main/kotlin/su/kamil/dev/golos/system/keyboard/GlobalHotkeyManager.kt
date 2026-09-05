@@ -139,6 +139,15 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
 
                 try {
                     x11.XSetErrorHandler { _, _ -> 0 }
+                    val supported = Memory(4)
+                    val hasDetectable =
+                        try {
+                            x11.XkbSetDetectableAutoRepeat(display, true, supported)
+                        } catch (_: Throwable) {
+                            false
+                        }
+                    logger.info("X11 Detectable Auto-Repeat active: {}", hasDetectable)
+
                     rootWindow = x11.XDefaultRootWindow(display)
 
                     val keysym = resolveKeysym(x11, config.keyName)
@@ -188,8 +197,6 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                     )
 
                     val eventMemory = Memory(EVENT_BUFFER_BYTES.toLong())
-                    val keysReturn = ByteArray(KEYMAP_BYTES)
-                    var pollCounter = 0
 
                     while (isHookActive.get()) {
                         if (x11.XPending(display) > 0) {
@@ -208,31 +215,24 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                                     }
                                 }
                                 EVENT_KEY_RELEASE -> {
-                                    x11.XQueryKeymap(display, keysReturn)
-                                    val byteIdx = grabbedKeycode / BITS_PER_BYTE
-                                    val bitMask = 1 shl (grabbedKeycode % BITS_PER_BYTE)
-                                    val isPhysicallyDown = (keysReturn[byteIdx].toInt() and bitMask) != 0
-
-                                    if (isPhysicallyDown) {
-                                        logger.trace("X11 auto-repeat release ignored via XQueryKeymap")
+                                    if (hasDetectable) {
+                                        // XKB detectable auto-repeat emits KeyRelease only on physical release
+                                        if (isKeyCurrentlyDown.compareAndSet(true, false)) {
+                                            logger.debug("Global hotkey KeyRelease confirmed: {}", config.displayText)
+                                            onKeyUp()
+                                        }
                                     } else {
+                                        // Debounce for servers without detectable auto-repeat
                                         synchronized(this) {
                                             pendingReleaseJob?.cancel(false)
                                             pendingReleaseJob =
                                                 debounceScheduler.schedule({
-                                                    val verifyKeys = ByteArray(KEYMAP_BYTES)
-                                                    x11.XQueryKeymap(display, verifyKeys)
-                                                    val verifyByte = grabbedKeycode / BITS_PER_BYTE
-                                                    val verifyBit = 1 shl (grabbedKeycode % BITS_PER_BYTE)
-                                                    val stillDown = (verifyKeys[verifyByte].toInt() and verifyBit) != 0
-                                                    if (!stillDown) {
-                                                        if (isKeyCurrentlyDown.compareAndSet(true, false)) {
-                                                            logger.debug(
-                                                                "Global hotkey KeyRelease confirmed: {}",
-                                                                config.displayText,
-                                                            )
-                                                            onKeyUp()
-                                                        }
+                                                    if (isKeyCurrentlyDown.compareAndSet(true, false)) {
+                                                        logger.debug(
+                                                            "Global hotkey KeyRelease confirmed (fallback): {}",
+                                                            config.displayText,
+                                                        )
+                                                        onKeyUp()
                                                     }
                                                 }, DEBOUNCE_DELAY_MS, TimeUnit.MILLISECONDS)
                                         }
@@ -240,28 +240,6 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                                 }
                             }
                         } else {
-                            if (isKeyCurrentlyDown.get()) {
-                                pollCounter++
-                                if (pollCounter >= SUPERVISOR_INTERVAL_TICKS) {
-                                    pollCounter = 0
-                                    x11.XQueryKeymap(display, keysReturn)
-                                    val sByte = grabbedKeycode / BITS_PER_BYTE
-                                    val sBit = 1 shl (grabbedKeycode % BITS_PER_BYTE)
-                                    val isPhysicallyDown = (keysReturn[sByte].toInt() and sBit) != 0
-                                    if (!isPhysicallyDown) {
-                                        if (isKeyCurrentlyDown.compareAndSet(true, false)) {
-                                            logger.debug(
-                                                "Supervisor: key physically released: {}",
-                                                config.displayText,
-                                            )
-                                            onKeyUp()
-                                        }
-                                    }
-                                }
-                            } else {
-                                pollCounter = 0
-                            }
-
                             try {
                                 Thread.sleep(LOOP_SLEEP_MS)
                             } catch (_: InterruptedException) {

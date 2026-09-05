@@ -198,4 +198,19 @@ class VoiceBackendTest {
                 assertTrue(result.text.lowercase().contains("обсудим") || result.text.lowercase().contains("архитектур"))
             }
         }
+
+    @Test
+    fun `test WhisperCppEngine bilingual mode configuration`() {
+        val engine =
+            su.kamil.dev.golos.voice.engine.WhisperCppEngine(
+                modelPath = "models/ggml-base.bin",
+                language = "fr",
+                bilingualMode = true,
+            )
+        assertTrue(engine.bilingualMode)
+        assertEquals("fr", engine.language)
+
+        engine.language = "de"
+        assertEquals("de", engine.language)
+    }
 }

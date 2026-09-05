@@ -106,4 +106,10 @@ interface X11Lib : Library {
         display: Pointer?,
         keys_return: ByteArray,
     ): Int
+
+    fun XkbSetDetectableAutoRepeat(
+        display: Pointer?,
+        detectable: Boolean,
+        supported_rtrn: Pointer?,
+    ): Boolean
 }
