@@ -18,7 +18,6 @@ class BulbWidget(
     var statusText: String = "ACTIVE",
     var compact: Boolean = false,
 ) : JPanel() {
-
     init {
         isOpaque = false
         border = EmptyBorder(4, 6, 4, 6)
@@ -68,11 +67,12 @@ class BulbWidget(
         val haloY = bulbY - 5
         val haloCenter = Point2D.Float(haloX + haloDiameter / 2f, haloY + haloDiameter / 2f)
         val haloDist = floatArrayOf(0.0f, 0.6f, 1.0f)
-        val haloColors = arrayOf(
-            Color(glowColor.red, glowColor.green, glowColor.blue, (glowColor.alpha * 0.7f).toInt().coerceIn(0, 255)),
-            Color(glowColor.red, glowColor.green, glowColor.blue, (glowColor.alpha * 0.25f).toInt().coerceIn(0, 255)),
-            Color(glowColor.red, glowColor.green, glowColor.blue, 0),
-        )
+        val haloColors =
+            arrayOf(
+                Color(glowColor.red, glowColor.green, glowColor.blue, (glowColor.alpha * 0.7f).toInt().coerceIn(0, 255)),
+                Color(glowColor.red, glowColor.green, glowColor.blue, (glowColor.alpha * 0.25f).toInt().coerceIn(0, 255)),
+                Color(glowColor.red, glowColor.green, glowColor.blue, 0),
+            )
         val haloPaint = RadialGradientPaint(haloCenter, haloDiameter / 2f, haloDist, haloColors)
         g2d.paint = haloPaint
         g2d.fill(Ellipse2D.Float(haloX.toFloat(), haloY.toFloat(), haloDiameter.toFloat(), haloDiameter.toFloat()))
@@ -81,17 +81,19 @@ class BulbWidget(
         val bulbCenter = Point2D.Float(bulbX + bulbDiameter * 0.35f, bulbY + bulbDiameter * 0.35f)
         val bulbDist = floatArrayOf(0.0f, 0.45f, 0.85f, 1.0f)
 
-        val highlightColor = Color(
-            (bulbColor.red + 180).coerceAtMost(255),
-            (bulbColor.green + 180).coerceAtMost(255),
-            (bulbColor.blue + 180).coerceAtMost(255),
-        )
+        val highlightColor =
+            Color(
+                (bulbColor.red + 180).coerceAtMost(255),
+                (bulbColor.green + 180).coerceAtMost(255),
+                (bulbColor.blue + 180).coerceAtMost(255),
+            )
         val midColor = bulbColor
-        val rimColor = Color(
-            (bulbColor.red * 0.55f).toInt(),
-            (bulbColor.green * 0.55f).toInt(),
-            (bulbColor.blue * 0.55f).toInt(),
-        )
+        val rimColor =
+            Color(
+                (bulbColor.red * 0.55f).toInt(),
+                (bulbColor.green * 0.55f).toInt(),
+                (bulbColor.blue * 0.55f).toInt(),
+            )
 
         val bulbColors = arrayOf(highlightColor, midColor, rimColor, rimColor.darker())
         val bulbPaint = RadialGradientPaint(bulbCenter, bulbDiameter * 0.75f, bulbDist, bulbColors)

@@ -40,8 +40,8 @@ object FontManager {
             logger.warn("Could not load Hack font from resources; falling back to system fonts: {}", e.message)
         }
 
-        regularFont = reg ?: Font(Font.SANS_SERIF, Font.PLAIN, DEFAULT_SIZE.toInt())
-        boldFont = bld ?: Font(Font.SANS_SERIF, Font.BOLD, DEFAULT_SIZE.toInt())
+        regularFont = (reg ?: Font(Font.SANS_SERIF, Font.PLAIN, DEFAULT_SIZE.toInt())).deriveFont(Font.PLAIN, DEFAULT_SIZE)
+        boldFont = (bld ?: Font(Font.SANS_SERIF, Font.BOLD, DEFAULT_SIZE.toInt())).deriveFont(Font.BOLD, DEFAULT_SIZE)
     }
 
     private fun loadFontFromResource(path: String): Font? {
@@ -53,9 +53,9 @@ object FontManager {
         return stream.use { Font.createFont(Font.TRUETYPE_FONT, it) }
     }
 
-    fun regular(size: Float = DEFAULT_SIZE): Font = regularFont.deriveFont(size)
+    fun regular(size: Float = DEFAULT_SIZE): Font = regularFont.deriveFont(Font.PLAIN, size)
 
-    fun bold(size: Float = DEFAULT_SIZE): Font = boldFont.deriveFont(size)
+    fun bold(size: Float = DEFAULT_SIZE): Font = boldFont.deriveFont(Font.BOLD, size)
 
     /**
      * Installs Hack font into Swing UIManager defaults for labels, buttons,

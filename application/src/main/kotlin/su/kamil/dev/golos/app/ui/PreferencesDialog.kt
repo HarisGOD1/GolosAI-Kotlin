@@ -257,8 +257,13 @@ class PreferencesDialog(
         styleMinimalistButton(miniPttButton)
         miniPttButton.addMouseListener(
             object : MouseAdapter() {
-                override fun mousePressed(e: MouseEvent?) { orchestrator.onPushToTalkPressed() }
-                override fun mouseReleased(e: MouseEvent?) { orchestrator.onPushToTalkReleased() }
+                override fun mousePressed(e: MouseEvent?) {
+                    orchestrator.onPushToTalkPressed()
+                }
+
+                override fun mouseReleased(e: MouseEvent?) {
+                    orchestrator.onPushToTalkReleased()
+                }
             },
         )
         actionsBox.add(miniPttButton)
@@ -280,17 +285,19 @@ class PreferencesDialog(
 
         // Allow window dragging anywhere on collapsed bar
         var mouseOffset: Point? = null
-        val dragListener = object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent) {
-                mouseOffset = e.point
-            }
-            override fun mouseDragged(e: MouseEvent) {
-                mouseOffset?.let { offset ->
-                    val cur = location
-                    setLocation(cur.x + e.x - offset.x, cur.y + e.y - offset.y)
+        val dragListener =
+            object : MouseAdapter() {
+                override fun mousePressed(e: MouseEvent) {
+                    mouseOffset = e.point
+                }
+
+                override fun mouseDragged(e: MouseEvent) {
+                    mouseOffset?.let { offset ->
+                        val cur = location
+                        setLocation(cur.x + e.x - offset.x, cur.y + e.y - offset.y)
+                    }
                 }
             }
-        }
         collapsedBarPanel.addMouseListener(dragListener)
         collapsedBarPanel.addMouseMotionListener(dragListener)
     }
@@ -1546,11 +1553,12 @@ class PreferencesDialog(
         val timingShort = if (timingCombo.selectedIndex == 0) "Rel" else "Live"
         val insertShort = if (insertionModeCombo.selectedIndex == 0) "Direct" else "Clip"
         val hotkeyStr = orchestrator.currentHotkey.displayText
-        val bilingualSuffix = if (bilingualModeCheck.isSelected && whisperEngine?.language != "auto" && whisperEngine?.language != "en") {
-            " [EN+${whisperEngine?.language?.uppercase()}]"
-        } else {
-            ""
-        }
+        val bilingualSuffix =
+            if (bilingualModeCheck.isSelected && whisperEngine?.language != "auto" && whisperEngine?.language != "en") {
+                " [EN+${whisperEngine?.language?.uppercase()}]"
+            } else {
+                ""
+            }
 
         val modeDisplay = "[$timingShort | $insertShort | $hotkeyStr]$bilingualSuffix"
 
@@ -1639,7 +1647,9 @@ class PreferencesDialog(
         header.border = EmptyBorder(12, 14, 4, 14)
         val infoLabel =
             JLabel(
-                "<html><b>File:</b> ${file.name}<br/><b>Duration:</b> ${result.durationMs} ms | <b>Engine:</b> ${orchestrator.speechEngine.displayName}</html>",
+                "<html><b>File:</b> ${file.name}<br/>" +
+                    "<b>Duration:</b> ${result.durationMs} ms | " +
+                    "<b>Engine:</b> ${orchestrator.speechEngine.displayName}</html>",
             )
         header.add(infoLabel, BorderLayout.CENTER)
         dialog.add(header, BorderLayout.NORTH)
