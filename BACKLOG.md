@@ -217,3 +217,148 @@
 - 3 indicators: Application state (active/green), Voice state (idle/green, listening/amber, processing/red), and Mode state (timing, injection, hotkey, bilingual).
 - Window collapsible to a sleek floating mini-bar (580x78) with `isAlwaysOnTop = true` for persistent desktop presence during dictation.
 - Expand button restores full tabbed configuration window.
+
+---
+
+### 25. Undecorated Floating Mini-Bar Refactor (Bypass OS WM Minimum Window Clamping) [Planned]
+- **Identified Problem**:
+  - In-place resizing of the decorated `JFrame` causes X11 and desktop Window Managers (e.g. GNOME Mutter, XFWM, KWin) to clamp the window to the WM minimum decorated size (~480x360), preventing a true compact floating indicator bar.
+- **Implementation Strategy**:
+  - Separate the floating indicator pill from the primary `JFrame` by introducing a dedicated lightweight, undecorated `JWindow` (or `JDialog(frame, isUndecorated = true)`).
+  - On Collapse:
+    - Save main window position and hide the decorated `JFrame` (`frame.isVisible = false`).
+    - Display the standalone floating pill widget (`420 x 54` or `460 x 58`) at the user's preferred desktop position.
+    - Set `window.isAlwaysOnTop = true` and attach window drag listener for fluid movement across multi-monitor setups.
+    - Floating pill hosts 3 LED bulbs, compact PTT action button, and expand button (`[+]`).
+  - On Expand:
+    - Hide the floating `JWindow` and restore the full `JFrame` to its previous position and dimensions.
+- **Criteria Alignment**: `B-11`, `D-08`, User UX requirement.
+
+---
+
+### 26. Speech Efficiency Metrics & Statistics Engine (`EfficiencyMetricsHandler`) [Planned]
+- **Core Architecture & Calculations**:
+  - Introduce `EfficiencyMetricsHandler` service tracking per-replica and aggregate session metrics:
+    1. **Audio Duration ($T_{audio}$)**: captured audio length in seconds and milliseconds.
+    2. **Processing / Inference Latency ($T_{proc}$)**: wall-clock time spent by speech engine to transcribe audio.
+    3. **Real-Time Factor (RTF)**: $RTF = \frac{T_{proc}}{T_{audio}}$ (RTF $< 1.0\times$ signifies faster-than-real-time speed; e.g., $0.12\times$). (Criterion `N-17`).
+    4. **Word Count ($W$) & Character Count ($C$)**: word count and character count of the recognized text.
+    5. **Speaking Rate / Words Per Minute (WPM)**: $WPM = \frac{W}{T_{audio} / 60}$. (Criteria `F-05` fast speech 180 WPM, `F-06` slow speech 90 WPM).
+    6. **Typing Time Saved ($\Delta T_{saved}$)**: time saved assuming standard human typing speed of 40 WPM: $\Delta T_{saved} = \max\left(0, \frac{W}{40/60} - T_{audio}\right)$.
+    7. **Injection Speed / Latency**: typing throughput in characters per second ($C / T_{inject}$). (Criterion `K-22`).
+- **Data Persistence**:
+  - In-memory circular buffer for active session metrics.
+  - Persistent storage in `~/.cache/golos-ai/metrics.json` tracking lifetime aggregates.
+- **Criteria Alignment**: `F-05`, `F-06`, `N-17`, `K-22`, `M-02`.
+
+---
+
+### 27. Dashboard Efficiency Metrics Panels (Current Text, History Mean, All Time) [Planned]
+- **UI Presentation on Dashboard (Tab 0)**:
+  - Add 3 clean metric card panels between the Push-to-Talk button and Recent Dictation box:
+    - **Panel A: `[Current Text]` (Last Dictation)**:
+      - Audio duration (e.g. `3.2 s`)
+      - Processing latency (e.g. `380 ms`)
+      - Real-Time Factor (e.g. `0.12x RTF`)
+      - Speaking speed (e.g. `145 WPM` | `24 words / 152 chars`)
+      - Time saved (e.g. `+14.5 s`)
+    - **Panel B: `[History Mean]` (Current Session / Filtered History)**:
+      - Mean audio length (e.g. `4.6 s`)
+      - Mean latency (e.g. `510 ms`)
+      - Mean RTF (e.g. `0.14x RTF`)
+      - Mean speaking speed (e.g. `138 WPM`)
+      - Session total (e.g. `42 replicas` | `1,120 words` | `+14.2 min saved`)
+    - **Panel C: `[All Time]` (Cumulative Lifetime Statistics)**:
+      - Total replicas recorded (e.g. `1,420`)
+      - Total spoken audio hours (e.g. `2h 25m`)
+      - Total words transcribed (e.g. `19,850 words`)
+      - Lifetime average speed (e.g. `142 WPM`)
+      - Cumulative typing time saved (e.g. `5.8 hours`)
+      - Best recorded RTF (e.g. `0.08x RTF`)
+  - Full localization support across all 10 UI languages (`EN`, `FR`, `DE`, `RU`, `JP`, `CN`, `TR`, `AR`, `ES`, `IT`).
+  - Strict typographic guidelines: proportional sans-serif for labels, Hack monospace for numeric metrics. Zero emojis.
+- **Criteria Alignment**: `F-05`, `N-17`, `M-02`.
+
+---
+
+### 28. Single-Instance Application Lock & Mutex (`B-13`) [Planned]
+- **Goal**: Running a second instance of GolosAI must not conflict with or crash the running instance; it must signal the first instance to come to the foreground and exit cleanly.
+- **Design**:
+  - Local UNIX domain socket or file lock (`~/.cache/golos-ai/golos.lock` on Linux/macOS, named Mutex on Windows).
+  - Second instance connects to existing lock socket, sends `SHOW` command, and exits with code 0.
+  - Primary instance restores minimized/tray state, brings window to front, and requests input focus.
+- **Criteria Alignment**: `B-13`.
+
+---
+
+### 29. Toggle Push-to-Talk Trigger Mode (`D-03`) [Planned]
+- **Goal**: Support alternate switch/toggle mode where first hotkey press begins recording and second hotkey press stops recording and triggers recognition.
+- **Design**:
+  - Configuration option: `hotkey.triggerMode`: `HOLD_TO_TALK` (default) vs `TOGGLE_ON_OFF`.
+  - State machine handles toggle transitions.
+  - UI indicator and PTT button update dynamically ("Click to Start" / "Click to Stop").
+- **Criteria Alignment**: `D-03`.
+
+---
+
+### 30. Live Audio Input Signal VU Meter & Silence / Clipping Warning (`C-07`, `C-08`, `E-07`) [Planned]
+- **Goal**: Real-time microphone input volume indicator in UI to prevent speaking into a muted or overloaded microphone.
+- **Design**:
+  - Audio capture pipeline calculates rolling RMS dB level: $dB = 20 \log_{10}(RMS / RMS_{max})$.
+  - Visual mini VU level meter bar on Dashboard and Audio settings tab.
+  - Warning banner when input level is below -50 dB for >1.5s ("Microphone muted or volume too low").
+  - Warning alert when signal exceeds 0 dB ("Audio clipping detected; lower input volume").
+- **Criteria Alignment**: `C-07`, `C-08`, `E-07`.
+
+---
+
+### 31. Rule-Based Speech Text Normalization & Post-Processing (`F-10` - `F-20`, `G-01` - `G-15`) [Planned]
+- **Goal**: Automatic formatting of numbers into digits, dates, times, currency, and removal of filler words.
+- **Design**:
+  - Pluggable `TextNormalizer` pipeline:
+    - Number formatter: convert spoken words to digits ("двадцать пять" -> "25", "one hundred" -> "100").
+    - Currency and units: "сто рублей" -> "100 руб.", "fifty dollars" -> "$50".
+    - Dates and times: "четырнадцать тридцать" -> "14:30".
+    - Filler words filter: strip Russian filler sounds ("э-э", "ну", "типа", "как бы") and English ("um", "uh", "like").
+    - Punctuation voice commands: "точка" -> ".", "запятая" -> ",", "с новой строки" -> `\n`.
+  - Toggleable via configuration (`postProcessing.enabled`).
+- **Criteria Alignment**: `F-10` to `F-20`, `G-01` to `G-15`.
+
+---
+
+### 32. Custom Domain Dictionary & Terminology Replacement (`H-01` - `H-14`) [Planned]
+- **Goal**: High-accuracy recognition of technical terms, programming identifiers, brands, and domain vocabulary.
+- **Design**:
+  - Load dictionary from YAML file (`~/.config/golos-ai/dictionary.yaml`).
+  - Fast Trie / Aho-Corasick phonetic substitution to correct acoustic confusions.
+  - Inject custom vocabulary into Whisper initial prompt (`--prompt`).
+  - Track replacement hit statistics in history log.
+- **Criteria Alignment**: `H-01` to `H-14`.
+
+---
+
+### 33. Active Window Context Detection & Application Profiles (`J-01` - `J-05`, `M-02`, `M-05`) [Planned]
+- **Goal**: Automatically tailor recognition style to the active application and record app name in history.
+- **Design**:
+  - Query active window title and process identifier:
+    - Linux X11: `_NET_ACTIVE_WINDOW` via X11 / `xdotool`.
+    - Windows: `GetForegroundWindow` + `GetWindowText`.
+    - macOS: `NSWorkspace.shared.frontmostApplication`.
+  - Profiles:
+    - `Messenger` (Telegram, Slack): short messages, relaxed punctuation.
+    - `Code` (VS Code, IntelliJ, Terminal): identifier casing preservation, technical acronyms.
+    - `Mail` (Thunderbird, Outlook): formal paragraph structure, full punctuation.
+  - Record target application in `HistoryEntry` metadata for filtering.
+- **Criteria Alignment**: `J-01` to `J-05`, `M-02`, `M-05`.
+
+---
+
+### 34. Batch Audio File Transcription with Timecodes & RTF Reporting (`N-09`, `N-10`, `N-13`, `N-17`) [Planned]
+- **Goal**: Transcribe directories of audio files with batch progress tracking, subtitle export, and processing speed evaluation.
+- **Design**:
+  - Batch audio file selector and queue manager.
+  - Background execution with file-by-file and total progress bars.
+  - Export formats: Plain Text (`.txt`), SubRip Subtitles (`.srt`), WebVTT (`.vtt`) with timecodes.
+  - Report aggregate Real-Time Factor (RTF) upon completion.
+- **Criteria Alignment**: `N-09`, `N-10`, `N-13`, `N-17`.
+
