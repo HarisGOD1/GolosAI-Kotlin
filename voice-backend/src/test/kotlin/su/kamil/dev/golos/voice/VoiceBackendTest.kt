@@ -1,0 +1,61 @@
+package su.kamil.dev.golos.voice
+
+import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Test
+import su.kamil.dev.golos.core.model.AudioChunk
+import su.kamil.dev.golos.voice.audio.AudioPreprocessor
+import su.kamil.dev.golos.voice.engine.MockSpeechToTextEngine
+
+class VoiceBackendTest {
+
+    @Test
+    fun `test AudioPreprocessor creates valid WAV header`() {
+        val pcm = ByteArray(3200) // 100ms at 16kHz 16-bit mono
+        val chunk = AudioChunk(pcm, sampleRate = 16000, channels = 1, bitsPerSample = 16)
+        val wavBytes = AudioPreprocessor.createWavBytes(chunk)
+
+        assertTrue(wavBytes.size > 44)
+        // Check RIFF header
+        assertEquals('R'.code.toByte(), wavBytes[0])
+        assertEquals('I'.code.toByte(), wavBytes[1])
+        assertEquals('F'.code.toByte(), wavBytes[2])
+        assertEquals('F'.code.toByte(), wavBytes[3])
+
+        // Check WAVE fmt
+        assertEquals('W'.code.toByte(), wavBytes[8])
+        assertEquals('A'.code.toByte(), wavBytes[9])
+        assertEquals('V'.code.toByte(), wavBytes[10])
+        assertEquals('E'.code.toByte(), wavBytes[11])
+    }
+
+    @Test
+    fun `test AudioPreprocessor resampling from 48kHz stereo to 16kHz mono`() {
+        // 48000Hz, 2 channels, 16 bits = 4 bytes per frame. 480 frames = 10ms = 1920 bytes
+        val stereo48k = ByteArray(1920)
+        // Put some non-zero values
+        for (i in stereo48k.indices step 2) {
+            stereo48k[i] = 0x50
+        }
+
+        val chunk = AudioChunk(stereo48k, sampleRate = 48000, channels = 2, bitsPerSample = 16)
+        val converted = AudioPreprocessor.toWhisperStandard(chunk)
+
+        assertEquals(16000, converted.sampleRate)
+        assertEquals(1, converted.channels)
+        assertEquals(16, converted.bitsPerSample)
+        // 10ms at 16kHz mono 16-bit = 160 frames * 2 bytes = 320 bytes
+        assertEquals(320, converted.samples.size)
+    }
+
+    @Test
+    fun `test MockSpeechToTextEngine returns expected transcription`() = runBlocking {
+        val engine = MockSpeechToTextEngine(simulatedDelayMs = 10, predeterminedText = "Test transcription")
+        val pcm = ByteArray(1600) { 0x50 } // non-silent
+        val chunk = AudioChunk(pcm)
+
+        val result = engine.transcribe(chunk)
+        assertEquals("Test transcription", result.text)
+        assertTrue(result.confidence > 0.9f)
+    }
+}

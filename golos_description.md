@@ -32,7 +32,19 @@ Source code is written in Kotlin, project build by gradle
 When the application starts, it initializes the System Utilities module. The System Utilities module provides platform-specific functionality for microphone input, global keyboard handling, and writing text into the active input field. The Application coordinates these components and manages the dictation workflow. The Voice Backend is responsible for speech-processing logic, including audio format conversion, speech recognition, and translation models.
 
 
+## allowed external dependencies: MIT or MIT based licensing
+PortAudio - for audio capture 
+whisper.cpp - audio backend artifact (use JNI bindings or something like it)
+Swing - for UI
 
-
-
-
+for keyboard handling and text insertion it may be more painful:
+JNA
+ ↓
+Windows native keyboard API
+macOS native event API
+Linux/X11 or Wayland-specific implementation
+TextInput
+    │
+    ├── Windows → native input
+    ├── macOS   → native accessibility/input
+    └── Linux   → platform-specific implementation

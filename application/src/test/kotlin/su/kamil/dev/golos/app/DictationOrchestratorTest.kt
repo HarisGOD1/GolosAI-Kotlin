@@ -1,0 +1,102 @@
+package su.kamil.dev.golos.app
+
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import su.kamil.dev.golos.core.model.AudioChunk
+import su.kamil.dev.golos.core.model.AudioDevice
+import su.kamil.dev.golos.core.model.DictationState
+import su.kamil.dev.golos.core.model.HotkeyConfig
+import su.kamil.dev.golos.core.ports.AudioCapturePort
+import su.kamil.dev.golos.core.ports.TextInjectorPort
+import su.kamil.dev.golos.core.state.DictationStateMachine
+import su.kamil.dev.golos.system.keyboard.SimulatedHotkeyHook
+import su.kamil.dev.golos.voice.engine.MockSpeechToTextEngine
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class DictationOrchestratorTest {
+
+    private class FakeAudioCapture : AudioCapturePort {
+        var startCount = 0
+        var stopCount = 0
+        var capturing = false
+        var returnChunk: AudioChunk? = AudioChunk(ByteArray(1600) { 0x40 })
+
+        override fun getAvailableDevices(): List<AudioDevice> = emptyList()
+
+        override fun startCapture(device: AudioDevice?, onChunkCaptured: (AudioChunk) -> Unit) {
+            startCount++
+            capturing = true
+        }
+
+        override fun stopCapture(): AudioChunk? {
+            stopCount++
+            capturing = false
+            return returnChunk
+        }
+
+        override fun isCapturing(): Boolean = capturing
+    }
+
+    private class FakeTextInjector : TextInjectorPort {
+        val injected = mutableListOf<String>()
+
+        override fun injectText(text: String): Result<Unit> {
+            injected.add(text)
+            return Result.success(Unit)
+        }
+    }
+
+    @Test
+    fun `test full push-to-talk workflow from key press to injection`() = runTest {
+        val testDispatcher = StandardTestDispatcher(testScheduler)
+        val testScope = TestScope(testDispatcher)
+
+        val stateMachine = DictationStateMachine()
+        val fakeAudioCapture = FakeAudioCapture()
+        val mockEngine = MockSpeechToTextEngine(
+            simulatedDelayMs = 0,
+            predeterminedText = "Hello GolosAI"
+        )
+        val fakeHotkeyHook = SimulatedHotkeyHook()
+        val fakeTextInjector = FakeTextInjector()
+
+        val orchestrator = DictationOrchestrator(
+            stateMachine = stateMachine,
+            audioCapture = fakeAudioCapture,
+            speechEngine = mockEngine,
+            hotkeyHook = fakeHotkeyHook,
+            textInjector = fakeTextInjector,
+            scope = testScope
+        )
+
+        orchestrator.start(HotkeyConfig(keyCode = 19, keyName = "F8"))
+        assertEquals(DictationState.IDLE, orchestrator.state.value)
+
+        // 1. User presses and holds PTT key
+        fakeHotkeyHook.triggerKeyDown()
+        assertEquals(DictationState.RECORDING, orchestrator.state.value)
+        assertEquals(1, fakeAudioCapture.startCount)
+
+        // 2. User releases PTT key
+        fakeHotkeyHook.triggerKeyUp()
+        assertEquals(1, fakeAudioCapture.stopCount)
+
+        // Advance coroutines
+        testScheduler.advanceUntilIdle()
+
+        // 3. State should transition to IDLE after processing
+        assertEquals(DictationState.IDLE, orchestrator.state.value)
+
+        // 4. Text should have been injected
+        assertEquals(1, fakeTextInjector.injected.size)
+        assertEquals("Hello GolosAI", fakeTextInjector.injected[0])
+
+        orchestrator.stop()
+    }
+}
