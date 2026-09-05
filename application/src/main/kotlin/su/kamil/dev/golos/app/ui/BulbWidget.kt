@@ -1,6 +1,12 @@
 package su.kamil.dev.golos.app.ui
 
-import java.awt.*
+import java.awt.BasicStroke
+import java.awt.Color
+import java.awt.Dimension
+import java.awt.Graphics
+import java.awt.Graphics2D
+import java.awt.RadialGradientPaint
+import java.awt.RenderingHints
 import java.awt.geom.Ellipse2D
 import java.awt.geom.Point2D
 import javax.swing.JPanel
@@ -26,11 +32,11 @@ class BulbWidget(
 
     private fun updatePreferredSize() {
         if (compact) {
-            preferredSize = Dimension(120, 44)
-            minimumSize = Dimension(90, 40)
+            preferredSize = Dimension(110, 42)
+            minimumSize = Dimension(85, 36)
         } else {
-            preferredSize = Dimension(160, 56)
-            minimumSize = Dimension(120, 50)
+            preferredSize = Dimension(180, 56)
+            minimumSize = Dimension(140, 50)
         }
     }
 
@@ -57,8 +63,8 @@ class BulbWidget(
         val width = width
         val height = height
 
-        val bulbDiameter = if (compact) 18 else 24
-        val bulbX = 8
+        val bulbDiameter = if (compact) 16 else 22
+        val bulbX = if (compact) 6 else 8
         val bulbY = (height - bulbDiameter) / 2
 
         // 1. Soft Luminous Glow Halo
@@ -114,9 +120,9 @@ class BulbWidget(
         g2d.fill(Ellipse2D.Float(specX, specY, specW, specH))
 
         // 5. Text Information (Title and Value)
-        val textX = bulbX + bulbDiameter + (if (compact) 8 else 12)
-        val titleFont = FontManager.bold(if (compact) 10f else 11f)
-        val statusFont = FontManager.bold(if (compact) 12f else 13f)
+        val textX = bulbX + bulbDiameter + (if (compact) 8 else 10)
+        val titleFont = FontManager.bold(if (compact) 9.5f else 10.5f)
+        val statusFont = FontManager.bold(if (compact) 11.5f else 12.5f)
 
         g2d.font = titleFont
         g2d.color = Color(110, 120, 135)
@@ -125,13 +131,13 @@ class BulbWidget(
 
         g2d.font = statusFont
         g2d.color = Color(35, 40, 50)
-        val statusY = if (compact) height / 2 + 12 else height / 2 + 14
+        val statusY = if (compact) height / 2 + 11 else height / 2 + 13
 
         // Bound status string to prevent clipping
         val maxTextWidth = width - textX - 4
         var displayStatus = statusText
         val fm = g2d.getFontMetrics(statusFont)
-        if (fm.stringWidth(displayStatus) > maxTextWidth && maxTextWidth > 20) {
+        if (fm.stringWidth(displayStatus) > maxTextWidth && maxTextWidth > 15) {
             while (displayStatus.length > 3 && fm.stringWidth("$displayStatus...") > maxTextWidth) {
                 displayStatus = displayStatus.dropLast(1)
             }

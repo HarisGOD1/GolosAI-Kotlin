@@ -81,7 +81,9 @@ class HistoryManager(
                     .replace("\n", "\\n")
                     .replace("\r", "\\r")
 
-            val json = """{"id":"${entry.id}","ts":${entry.timestamp},"dur":${entry.durationMs},"engine":"${entry.engine}","lang":"${entry.language}","text":"$escapedText"}"""
+            val json =
+                """{"id":"${entry.id}","ts":${entry.timestamp},"dur":${entry.durationMs},""" +
+                    """"engine":"${entry.engine}","lang":"${entry.language}","text":"$escapedText"}"""
             historyFile.appendText(json + "\n")
         } catch (e: Exception) {
             logger.error("Failed to append history entry to disk", e)

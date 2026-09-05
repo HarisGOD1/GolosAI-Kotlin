@@ -63,7 +63,7 @@ class JavaSoundAudioCapture(
             devices.add(
                 AudioDevice(
                     id = "system-loopback-monitor",
-                    name = "🎧 [System Output Monitor] Desktop Audio Loopback (Speakers / Media)",
+                    name = "[System Output Monitor] Desktop Audio Loopback (Speakers / Media)",
                     isDefault = false,
                     isLoopbackMonitor = true,
                 ),
@@ -121,9 +121,9 @@ class JavaSoundAudioCapture(
             }
 
         return if (isMonitor) {
-            "🎧 [System Output Monitor] $baseName"
+            "[System Output Monitor] $baseName"
         } else {
-            "🎙️ [Microphone] $baseName"
+            "[Microphone] $baseName"
         }
     }
 

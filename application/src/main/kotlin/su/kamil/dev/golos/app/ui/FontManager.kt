@@ -7,19 +7,39 @@ import java.io.InputStream
 import javax.swing.UIManager
 
 /**
- * Font manager that loads and registers the MIT-licensed Hack font family
- * and applies larger font sizes (13-15pt) across the Swing UI.
+ * Font manager providing:
+ * - Clean, proportional SansSerif font for UI components (labels, buttons, tabs, forms),
+ *   guaranteeing multi-lingual Unicode glyph support across X11/Linux, Windows, and macOS (Cyrillic, CJK, Arabic, etc.).
+ * - MIT-licensed Hack monospace font for hotkey badges, transcripts, logs, and technical metrics.
  */
 object FontManager {
     private val logger = LoggerFactory.getLogger(FontManager::class.java)
 
-    const val DEFAULT_SIZE = 14f
-    const val SMALL_SIZE = 12f
-    const val TITLE_SIZE = 15f
-    const val INDICATOR_SIZE = 13f
+    const val DEFAULT_SIZE = 13f
+    const val SMALL_SIZE = 11.5f
+    const val TITLE_SIZE = 14f
+    const val INDICATOR_SIZE = 12f
 
-    val regularFont: Font
-    val boldFont: Font
+    val hackRegularFont: Font
+    val hackBoldFont: Font
+
+    @Volatile
+    var currentFontFamily: String = Font.SANS_SERIF
+        private set
+
+    val uiRegularFont: Font get() = regular(DEFAULT_SIZE)
+    val uiBoldFont: Font get() = bold(DEFAULT_SIZE)
+
+    val regularFont: Font get() = uiRegularFont
+    val boldFont: Font get() = uiBoldFont
+
+    private val availableFamilies: Set<String> by lazy {
+        try {
+            GraphicsEnvironment.getLocalGraphicsEnvironment().availableFontFamilyNames.toSet()
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
 
     init {
         var reg: Font? = null
@@ -37,11 +57,104 @@ object FontManager {
             }
             logger.info("Loaded MIT-licensed Hack font successfully.")
         } catch (e: Exception) {
-            logger.warn("Could not load Hack font from resources; falling back to system fonts: {}", e.message)
+            logger.warn("Could not load Hack font from resources: {}", e.message)
         }
 
-        regularFont = (reg ?: Font(Font.SANS_SERIF, Font.PLAIN, DEFAULT_SIZE.toInt())).deriveFont(Font.PLAIN, DEFAULT_SIZE)
-        boldFont = (bld ?: Font(Font.SANS_SERIF, Font.BOLD, DEFAULT_SIZE.toInt())).deriveFont(Font.BOLD, DEFAULT_SIZE)
+        hackRegularFont = (reg ?: Font(Font.MONOSPACED, Font.PLAIN, DEFAULT_SIZE.toInt())).deriveFont(Font.PLAIN, DEFAULT_SIZE)
+        hackBoldFont = (bld ?: Font(Font.MONOSPACED, Font.BOLD, DEFAULT_SIZE.toInt())).deriveFont(Font.BOLD, DEFAULT_SIZE)
+
+        selectFontForLanguage(AppLocalization.currentLanguage)
+    }
+
+    fun selectFontForLanguage(lang: AppLanguage) {
+        val sample =
+            when (lang) {
+                AppLanguage.JP -> "ダッシュボード 設定 音声"
+                AppLanguage.CN -> "控制面板 设置 语音"
+                AppLanguage.AR -> "لوحة القيادة الإعدادات"
+                AppLanguage.RU -> "Панель управления Настройки"
+                else -> "Dashboard Settings History"
+            }
+        val candidates =
+            when (lang) {
+                AppLanguage.JP ->
+                    listOf(
+                        "Noto Sans CJK JP",
+                        "Noto Sans JP",
+                        "Hiragino Sans",
+                        "Meiryo",
+                        "Yu Gothic",
+                        "MS Gothic",
+                        "TakaoPGothic",
+                        "IPAGothic",
+                        "Noto Sans CJK HK",
+                        "Noto Sans CJK SC",
+                    )
+                AppLanguage.CN ->
+                    listOf(
+                        "Noto Sans CJK SC",
+                        "Noto Sans SC",
+                        "PingFang SC",
+                        "Microsoft YaHei",
+                        "SimSun",
+                        "WenQuanYi Micro Hei",
+                        "Noto Sans CJK TC",
+                        "Noto Sans CJK HK",
+                        "Noto Sans CJK JP",
+                    )
+                AppLanguage.AR ->
+                    listOf(
+                        Font.SANS_SERIF,
+                        "DejaVu Sans",
+                        "Segoe UI",
+                        "Geeza Pro",
+                        "Arial",
+                        "Noto Sans Arabic",
+                    )
+                else ->
+                    listOf(
+                        Font.SANS_SERIF,
+                        "DejaVu Sans",
+                        "Segoe UI",
+                        "SF Pro Text",
+                        "Ubuntu",
+                    )
+            }
+        currentFontFamily = resolveFamily(candidates, sample)
+        logger.info("Selected UI font family '{}' for language {}", currentFontFamily, lang)
+    }
+
+    private fun resolveFamily(
+        candidates: List<String>,
+        sample: String,
+    ): String {
+        val fullSample = "$sample Whisper (F8) [Rel]"
+        for (candidate in candidates) {
+            if (candidate == Font.SANS_SERIF || availableFamilies.contains(candidate)) {
+                val f = Font(candidate, Font.PLAIN, 12)
+                if (f.canDisplayUpTo(fullSample) == -1) {
+                    return candidate
+                }
+            }
+        }
+        for (candidate in candidates) {
+            if (candidate == Font.SANS_SERIF || availableFamilies.contains(candidate)) {
+                val f = Font(candidate, Font.PLAIN, 12)
+                if (f.canDisplayUpTo(sample) == -1) {
+                    return candidate
+                }
+            }
+        }
+        try {
+            val allFonts = GraphicsEnvironment.getLocalGraphicsEnvironment().allFonts
+            for (f in allFonts) {
+                if (f.canDisplayUpTo(fullSample) == -1) {
+                    return f.family
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return Font.SANS_SERIF
     }
 
     private fun loadFontFromResource(path: String): Font? {
@@ -53,13 +166,16 @@ object FontManager {
         return stream.use { Font.createFont(Font.TRUETYPE_FONT, it) }
     }
 
-    fun regular(size: Float = DEFAULT_SIZE): Font = regularFont.deriveFont(Font.PLAIN, size)
+    fun regular(size: Float = DEFAULT_SIZE): Font = Font(currentFontFamily, Font.PLAIN, size.toInt()).deriveFont(Font.PLAIN, size)
 
-    fun bold(size: Float = DEFAULT_SIZE): Font = boldFont.deriveFont(Font.BOLD, size)
+    fun bold(size: Float = DEFAULT_SIZE): Font = Font(currentFontFamily, Font.BOLD, size.toInt()).deriveFont(Font.BOLD, size)
+
+    fun mono(size: Float = DEFAULT_SIZE): Font = hackRegularFont.deriveFont(Font.PLAIN, size)
+
+    fun monoBold(size: Float = DEFAULT_SIZE): Font = hackBoldFont.deriveFont(Font.BOLD, size)
 
     /**
-     * Installs Hack font into Swing UIManager defaults for labels, buttons,
-     * text fields, menus, combo boxes, tabbed panes, and tables.
+     * Installs clean, high-legibility proportional fonts into Swing UIManager defaults.
      */
     fun installGlobalSwingDefaults(baseSize: Float = DEFAULT_SIZE) {
         val baseFont = regular(baseSize)

@@ -3,7 +3,13 @@ package su.kamil.dev.golos.app.config
 import org.slf4j.LoggerFactory
 import org.yaml.snakeyaml.DumperOptions
 import org.yaml.snakeyaml.Yaml
-import su.kamil.dev.golos.core.model.*
+import su.kamil.dev.golos.core.model.AudioSettings
+import su.kamil.dev.golos.core.model.AutostartSettings
+import su.kamil.dev.golos.core.model.EngineSettings
+import su.kamil.dev.golos.core.model.GolosConfig
+import su.kamil.dev.golos.core.model.HotkeySettings
+import su.kamil.dev.golos.core.model.InsertionSettings
+import su.kamil.dev.golos.core.model.WhisperSettings
 import java.io.File
 import java.io.FileReader
 import java.io.FileWriter

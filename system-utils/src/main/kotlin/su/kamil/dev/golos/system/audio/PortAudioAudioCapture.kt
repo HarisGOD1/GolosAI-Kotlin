@@ -113,7 +113,7 @@ class PortAudioAudioCapture(
                             val rawName = info.name ?: "PortAudio Device #$i"
                             val isDefault = i == defaultInput
                             val isMonitor = rawName.lowercase().contains("monitor") || rawName.lowercase().contains("loopback")
-                            val prefix = if (isMonitor) "🎧 [PortAudio Monitor]" else "🎙️ [PortAudio Mic]"
+                            val prefix = if (isMonitor) "[PortAudio Monitor]" else "[PortAudio Mic]"
                             list.add(
                                 AudioDevice(
                                     id = "pa:$i",
@@ -136,8 +136,8 @@ class PortAudioAudioCapture(
         // Fallback or bridge: Tag devices as PortAudio provider for clear identification
         return fallbackCapture.getAvailableDevices().map { dev ->
             val cleanName =
-                dev.name.replace("🎙️ [Microphone]", "🎙️ [PortAudio Mic]")
-                    .replace("🎧 [System Output Monitor]", "🎧 [PortAudio Monitor]")
+                dev.name.replace("[Microphone]", "[PortAudio Mic]")
+                    .replace("[System Output Monitor]", "[PortAudio Monitor]")
             dev.copy(
                 id = if (dev.id.startsWith("pa:")) dev.id else "pa:" + dev.id,
                 name = cleanName,

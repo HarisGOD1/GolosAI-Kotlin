@@ -8,7 +8,21 @@ import org.slf4j.LoggerFactory
 import su.kamil.dev.golos.app.DictationOrchestrator
 import su.kamil.dev.golos.app.config.SettingsManager
 import su.kamil.dev.golos.app.history.HistoryManager
-import su.kamil.dev.golos.core.model.*
+import su.kamil.dev.golos.core.model.AudioDevice
+import su.kamil.dev.golos.core.model.AudioSettings
+import su.kamil.dev.golos.core.model.AutostartSettings
+import su.kamil.dev.golos.core.model.DictationState
+import su.kamil.dev.golos.core.model.EngineSettings
+import su.kamil.dev.golos.core.model.GolosConfig
+import su.kamil.dev.golos.core.model.HistoryEntry
+import su.kamil.dev.golos.core.model.HotkeyConfig
+import su.kamil.dev.golos.core.model.HotkeySettings
+import su.kamil.dev.golos.core.model.InjectionConfig
+import su.kamil.dev.golos.core.model.InjectionTiming
+import su.kamil.dev.golos.core.model.InsertionMode
+import su.kamil.dev.golos.core.model.InsertionSettings
+import su.kamil.dev.golos.core.model.TranscriptionResult
+import su.kamil.dev.golos.core.model.WhisperSettings
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
 import su.kamil.dev.golos.system.autostart.AutoStartManager
 import su.kamil.dev.golos.voice.download.ModelDownloader
@@ -16,7 +30,27 @@ import su.kamil.dev.golos.voice.download.WhisperBinaryManager
 import su.kamil.dev.golos.voice.download.WhisperModelInfo
 import su.kamil.dev.golos.voice.engine.InferenceDevice
 import su.kamil.dev.golos.voice.engine.WhisperCppEngine
-import java.awt.*
+import java.awt.BorderLayout
+import java.awt.Color
+import java.awt.Component
+import java.awt.Container
+import java.awt.Dialog
+import java.awt.Dimension
+import java.awt.FlowLayout
+import java.awt.Frame
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.GridLayout
+import java.awt.Image
+import java.awt.Insets
+import java.awt.MenuItem
+import java.awt.Point
+import java.awt.PopupMenu
+import java.awt.Rectangle
+import java.awt.RenderingHints
+import java.awt.SystemTray
+import java.awt.Toolkit
+import java.awt.TrayIcon
 import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
@@ -28,7 +62,24 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.swing.*
+import javax.swing.Box
+import javax.swing.BoxLayout
+import javax.swing.JButton
+import javax.swing.JCheckBox
+import javax.swing.JComboBox
+import javax.swing.JDialog
+import javax.swing.JFileChooser
+import javax.swing.JFrame
+import javax.swing.JLabel
+import javax.swing.JOptionPane
+import javax.swing.JPanel
+import javax.swing.JProgressBar
+import javax.swing.JScrollPane
+import javax.swing.JTabbedPane
+import javax.swing.JTextArea
+import javax.swing.JTextField
+import javax.swing.SwingUtilities
+import javax.swing.Timer
 import javax.swing.border.CompoundBorder
 import javax.swing.border.EmptyBorder
 import javax.swing.border.LineBorder
@@ -46,8 +97,10 @@ class PreferencesDialog(
     private val settingsManager: SettingsManager = SettingsManager(),
     private val historyManager: HistoryManager = HistoryManager(),
     private val autoStartManager: AutoStartManager = AutoStartManager(),
-) : JFrame("GolosAI - Speech to Text Assistant") {
+) : JPanel(BorderLayout()) {
     private val logger = LoggerFactory.getLogger(PreferencesDialog::class.java)
+
+    var frame: JFrame? = null
 
     // Color definitions for Bulbs and Accents
     private val greenActive = Color(46, 204, 113)
@@ -60,10 +113,11 @@ class PreferencesDialog(
     private val blueGlow = Color(52, 152, 219, 140)
 
     // Window Layout & Collapse State
-    private var isCollapsed = false
-    private var expandedBounds: Rectangle = Rectangle(100, 100, 680, 720)
-    private val mainContainer = JPanel(BorderLayout())
-    private val collapsedBarPanel = JPanel(BorderLayout(6, 0))
+    var isCollapsed = false
+        private set
+    private var expandedBounds: Rectangle = Rectangle(100, 100, 700, 720)
+    val mainContainer = JPanel(BorderLayout())
+    val collapsedBarPanel = JPanel()
 
     private val tabbedPane = JTabbedPane()
 
@@ -75,13 +129,13 @@ class PreferencesDialog(
     // 3 Glowing Bulbs for Collapsed Mini-Bar
     private val miniAppBulb = BulbWidget(greenActive, greenGlow, "APP", "ACTIVE", compact = true)
     private val miniVoiceBulb = BulbWidget(greenActive, greenGlow, "VOICE", "IDLE", compact = true)
-    private val miniModeBulb = BulbWidget(blueMode, blueGlow, "MODE", "F8", compact = true)
+    private val miniModeBulb = BulbWidget(blueMode, blueGlow, "MODE", "F8 • Direct", compact = true)
 
     // Push-to-Talk Controls
-    private val pttButton = JButton("🎙️ Hold to Speak (Push to Talk)")
-    private val miniPttButton = JButton("🎙️ Speak")
+    private val pttButton = JButton("Hold to Speak (Push to Talk)")
+    private val miniPttButton = JButton("Speak")
     private val recentDictationArea =
-        JTextArea("No dictations yet. Hold your hotkey or press Hold to Speak.", 4, 30).apply {
+        JTextArea(AppLocalization.tr("placeholder.no_dictations"), 4, 30).apply {
             isEditable = false
             lineWrap = true
             wrapStyleWord = true
@@ -106,10 +160,16 @@ class PreferencesDialog(
     private val shiftCheck = JCheckBox("Shift")
     private val altCheck = JCheckBox("Alt")
     private val metaCheck = JCheckBox("Super/Win")
-    private val keyField = JTextField("F8", 6)
-    private val activeHotkeyLabel = JLabel(orchestrator.currentHotkey.displayText)
+    private val keyField =
+        JTextField("F8", 6).apply {
+            font = FontManager.mono(FontManager.DEFAULT_SIZE)
+        }
+    private val activeHotkeyLabel =
+        JLabel(orchestrator.currentHotkey.displayText).apply {
+            font = FontManager.monoBold(FontManager.DEFAULT_SIZE)
+        }
     private val applyHotkeyBtn = JButton("Apply")
-    private val recordBtn = JButton("🎙️ Record Shortcut (Click & Press Keys)")
+    private val recordBtn = JButton("Record Shortcut (Click & Press Keys)")
 
     // Privacy & Insertion Controls
     private val insertionModeCombo = JComboBox(arrayOf("Direct Typing (Privacy-preserving)", "Clipboard Paste (Ctrl+V)"))
@@ -127,8 +187,14 @@ class PreferencesDialog(
 
     // Binary Controls
     private val binaryStatusLabel = JLabel("Checking binary...")
-    private val binaryPathField = JTextField(whisperEngine?.binaryPath ?: "", 18)
-    private val downloadBinaryBtn = JButton("Download whisper-cli")
+    private val binaryPathField =
+        JTextField(whisperEngine?.binaryPath ?: "", 18).apply {
+            font = FontManager.mono(FontManager.SMALL_SIZE)
+        }
+    private val downloadBinaryBtn =
+        JButton("Download CLI").apply {
+            toolTipText = "Download precompiled whisper-cli binary"
+        }
     private val browseBinaryBtn = JButton("Browse...")
 
     // Model Controls
@@ -165,7 +231,9 @@ class PreferencesDialog(
 
     // Bilingual Mode (EN + Selected Language)
     private val bilingualModeCheck =
-        JCheckBox("Bilingual Mode: EN + Selected Language (mixed code-switching & technical terms)", false)
+        JCheckBox("Bilingual Mode (EN + Selected Language)", false).apply {
+            toolTipText = "Allows mixed code-switching between English and selected language"
+        }
 
     private val deviceCombo =
         JComboBox(
@@ -177,14 +245,47 @@ class PreferencesDialog(
 
     // History UI components
     private val historyListPanel = JPanel()
-    private val historySearchField = JTextField(15)
+    private val historySearchField = JTextField(12)
     private val historyCountLabel = JLabel("Total: 0 entries")
 
     private val coroutineScope = CoroutineScope(Dispatchers.Default + Job())
     private var availableDevices: List<AudioDevice> = emptyList()
 
+    // Localized UI Elements (dynamic language switching)
+    private val collapseBtn = JButton("[-] " + AppLocalization.tr("btn.collapse"))
+    private val expandBtn = JButton("[+] " + AppLocalization.tr("btn.expand"))
+    private val closeBtn = JButton("X")
+    private val copyRecentBtn = JButton(AppLocalization.tr("btn.copy"))
+    private val hideTrayBtn = JButton(AppLocalization.tr("btn.hide_tray"))
+    private val openSettingsBtn = JButton(AppLocalization.tr("btn.open_settings"))
+    private val exitBtn = JButton(AppLocalization.tr("btn.exit"))
+    private val recentTitle = JLabel(AppLocalization.tr("label.recent_speech"))
+
+    private val langLabel = JLabel(AppLocalization.tr("label.ui_language"))
+    private val provLabel = JLabel(AppLocalization.tr("label.audio_provider"))
+    private val micLabel = JLabel(AppLocalization.tr("label.microphone"))
+    private val engLabel = JLabel(AppLocalization.tr("label.engine"))
+    private val hkLabel = JLabel(AppLocalization.tr("label.hotkey"))
+    private val insLabel = JLabel(AppLocalization.tr("label.insertion_mode"))
+    private val timingLabel = JLabel(AppLocalization.tr("label.timing"))
+    private val privLabel = JLabel(AppLocalization.tr("label.clipboard_privacy"))
+    private val autoLabel = JLabel(AppLocalization.tr("label.system_startup"))
+    private val resetBtn = JButton(AppLocalization.tr("btn.reset_defaults"))
+    private val exportBtn = JButton(AppLocalization.tr("btn.export"))
+    private val importBtn = JButton(AppLocalization.tr("btn.import"))
+
+    private val execLabel = JLabel(AppLocalization.tr("label.whisper_exec"))
+    private val modLabel = JLabel(AppLocalization.tr("label.multilingual_model"))
+    private val spokenLangLabel = JLabel(AppLocalization.tr("label.spoken_lang"))
+    private val devLabel = JLabel(AppLocalization.tr("label.inference_device"))
+    private val transcribeFileBtn = JButton(AppLocalization.tr("btn.transcribe_file"))
+
+    private val historySearchLabel = JLabel(AppLocalization.tr("label.search_history"))
+    private val historyTranscribeBtn = JButton(AppLocalization.tr("btn.transcribe_file"))
+    private val clearBtn = JButton(AppLocalization.tr("btn.clear_history"))
+
     init {
-        FontManager.installGlobalSwingDefaults(14f)
+        FontManager.installGlobalSwingDefaults(13f)
         initUi()
         loadInitialConfig()
         observeState()
@@ -192,21 +293,31 @@ class PreferencesDialog(
         setupLocalizationListener()
     }
 
-    private fun initUi() {
-        defaultCloseOperation = DO_NOTHING_ON_CLOSE
-        addWindowListener(
+    fun showInFrame(): JFrame {
+        val f = JFrame("GolosAI - Speech to Text Assistant")
+        this.frame = f
+        f.defaultCloseOperation = JFrame.DO_NOTHING_ON_CLOSE
+        f.addWindowListener(
             object : WindowAdapter() {
                 override fun windowClosing(e: WindowEvent?) {
                     exitApplication()
                 }
             },
         )
-        setSize(680, 720)
-        setMinimumSize(Dimension(540, 480))
-        setLocationRelativeTo(null)
-        expandedBounds = bounds
+        f.setSize(700, 720)
+        f.minimumSize = Dimension(580, 480)
+        f.setLocationRelativeTo(null)
+        f.contentPane = this
+        expandedBounds = f.bounds
 
-        layout = BorderLayout()
+        setupSystemTray()
+        return f
+    }
+
+    private fun initUi() {
+        setSize(700, 720)
+        preferredSize = Dimension(700, 720)
+        minimumSize = Dimension(580, 480)
 
         // Tab 1: Dashboard
         tabbedPane.addTab(AppLocalization.tr("tab.dashboard"), createMainTab())
@@ -233,25 +344,25 @@ class PreferencesDialog(
         tabbedPane.addTab(AppLocalization.tr("tab.history"), createHistoryTab())
 
         mainContainer.add(tabbedPane, BorderLayout.CENTER)
-        contentPane = mainContainer
+        add(mainContainer, BorderLayout.CENTER)
 
         setupCollapsedBar()
-        setupSystemTray()
         syncInjectionConfig()
         renderStatus(orchestrator.state.value)
     }
 
     private fun setupCollapsedBar() {
-        collapsedBarPanel.border = EmptyBorder(6, 10, 6, 10)
+        collapsedBarPanel.border = EmptyBorder(6, 12, 6, 12)
         collapsedBarPanel.background = Color(245, 247, 250)
+        collapsedBarPanel.layout = BoxLayout(collapsedBarPanel, BoxLayout.X_AXIS)
 
-        val bulbsBox = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+        val bulbsBox = JPanel(GridLayout(1, 3, 6, 0))
         bulbsBox.isOpaque = false
         bulbsBox.add(miniAppBulb)
         bulbsBox.add(miniVoiceBulb)
         bulbsBox.add(miniModeBulb)
 
-        val actionsBox = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0))
+        val actionsBox = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
         actionsBox.isOpaque = false
 
         styleMinimalistButton(miniPttButton)
@@ -268,20 +379,19 @@ class PreferencesDialog(
         )
         actionsBox.add(miniPttButton)
 
-        val expandBtn = JButton("⛶ " + AppLocalization.tr("btn.expand"))
         styleMinimalistButton(expandBtn, isAccent = true)
         expandBtn.addActionListener { toggleCollapse() }
         actionsBox.add(expandBtn)
 
-        val closeBtn = JButton("✖")
         styleMinimalistButton(closeBtn)
         closeBtn.foreground = Color(180, 40, 40)
         closeBtn.toolTipText = AppLocalization.tr("btn.exit")
         closeBtn.addActionListener { exitApplication() }
         actionsBox.add(closeBtn)
 
-        collapsedBarPanel.add(bulbsBox, BorderLayout.WEST)
-        collapsedBarPanel.add(actionsBox, BorderLayout.EAST)
+        collapsedBarPanel.add(bulbsBox)
+        collapsedBarPanel.add(Box.createHorizontalGlue())
+        collapsedBarPanel.add(actionsBox)
 
         // Allow window dragging anywhere on collapsed bar
         var mouseOffset: Point? = null
@@ -293,8 +403,10 @@ class PreferencesDialog(
 
                 override fun mouseDragged(e: MouseEvent) {
                     mouseOffset?.let { offset ->
-                        val cur = location
-                        setLocation(cur.x + e.x - offset.x, cur.y + e.y - offset.y)
+                        frame?.let { f ->
+                            val cur = f.location
+                            f.setLocation(cur.x + e.x - offset.x, cur.y + e.y - offset.y)
+                        }
                     }
                 }
             }
@@ -302,26 +414,29 @@ class PreferencesDialog(
         collapsedBarPanel.addMouseMotionListener(dragListener)
     }
 
-    private fun toggleCollapse() {
+    fun toggleCollapse() {
         isCollapsed = !isCollapsed
+        removeAll()
         if (isCollapsed) {
-            expandedBounds = bounds
-            contentPane = collapsedBarPanel
-            isAlwaysOnTop = true
-            isResizable = false
-            setSize(580, 78)
-            minimumSize = Dimension(480, 70)
-            revalidate()
-            repaint()
+            expandedBounds = frame?.bounds ?: Rectangle(100, 100, 700, 720)
+            add(collapsedBarPanel, BorderLayout.CENTER)
+            frame?.let { f ->
+                f.isAlwaysOnTop = true
+                f.isResizable = false
+                f.setSize(640, 68)
+                f.minimumSize = Dimension(540, 60)
+            }
         } else {
-            isAlwaysOnTop = false
-            isResizable = true
-            contentPane = mainContainer
-            minimumSize = Dimension(540, 480)
-            bounds = expandedBounds
-            revalidate()
-            repaint()
+            add(mainContainer, BorderLayout.CENTER)
+            frame?.let { f ->
+                f.isAlwaysOnTop = false
+                f.isResizable = true
+                f.minimumSize = Dimension(580, 480)
+                f.bounds = expandedBounds
+            }
         }
+        revalidate()
+        repaint()
     }
 
     private fun createMainTab(): JPanel {
@@ -347,7 +462,6 @@ class PreferencesDialog(
 
         val collapseToolbar = JPanel(FlowLayout(FlowLayout.RIGHT, 0, 4))
         collapseToolbar.isOpaque = false
-        val collapseBtn = JButton("💡 " + AppLocalization.tr("btn.collapse"))
         styleMinimalistButton(collapseBtn, isAccent = true)
         collapseBtn.toolTipText = "Collapse GolosAI window to floating 3-bulb indicator bar"
         collapseBtn.addActionListener { toggleCollapse() }
@@ -381,16 +495,14 @@ class PreferencesDialog(
         recentBox.isOpaque = false
         val recentHeader = JPanel(BorderLayout())
         recentHeader.isOpaque = false
-        val recentTitle = JLabel(AppLocalization.tr("label.recent_speech"))
         recentTitle.font = FontManager.bold(13f)
         recentTitle.foreground = Color(70, 75, 85)
         recentHeader.add(recentTitle, BorderLayout.WEST)
 
-        val copyRecentBtn = JButton("📋 " + AppLocalization.tr("btn.copy"))
         styleMinimalistButton(copyRecentBtn)
         copyRecentBtn.addActionListener {
             val text = recentDictationArea.text.trim()
-            if (text.isNotEmpty() && !text.startsWith("No dictations yet")) {
+            if (text.isNotEmpty() && !isPlaceholderText(text)) {
                 copyToClipboard(text)
                 JOptionPane.showMessageDialog(this, "Copied transcription to clipboard!", "Copied", JOptionPane.INFORMATION_MESSAGE)
             }
@@ -414,10 +526,9 @@ class PreferencesDialog(
 
         val leftActions = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
         leftActions.isOpaque = false
-        val hideTrayBtn = JButton("📥 " + AppLocalization.tr("btn.hide_tray"))
         styleMinimalistButton(hideTrayBtn)
         hideTrayBtn.addActionListener {
-            isVisible = false
+            frame?.isVisible = false
         }
         if (SystemTray.isSupported()) {
             leftActions.add(hideTrayBtn)
@@ -426,12 +537,10 @@ class PreferencesDialog(
 
         val rightActions = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
         rightActions.isOpaque = false
-        val openSettingsBtn = JButton("⚙️ " + AppLocalization.tr("btn.open_settings"))
         styleMinimalistButton(openSettingsBtn)
         openSettingsBtn.addActionListener {
             tabbedPane.selectedIndex = 1
         }
-        val exitBtn = JButton("✖ " + AppLocalization.tr("btn.exit"))
         styleMinimalistButton(exitBtn)
         exitBtn.foreground = Color(180, 40, 40)
         exitBtn.addActionListener {
@@ -471,14 +580,99 @@ class PreferencesDialog(
         }
     }
 
+    fun updateLocalizedTexts() {
+        FontManager.selectFontForLanguage(AppLocalization.currentLanguage)
+        FontManager.installGlobalSwingDefaults(13f)
+        updateFontsRecursively(this)
+
+        tabbedPane.setTitleAt(0, AppLocalization.tr("tab.dashboard"))
+        tabbedPane.setTitleAt(1, AppLocalization.tr("tab.settings"))
+        tabbedPane.setTitleAt(2, AppLocalization.tr("tab.whisper"))
+        tabbedPane.setTitleAt(3, AppLocalization.tr("tab.history"))
+
+        collapseBtn.text = "[-] " + AppLocalization.tr("btn.collapse")
+        recentTitle.text = AppLocalization.tr("label.recent_speech")
+        copyRecentBtn.text = AppLocalization.tr("btn.copy")
+        hideTrayBtn.text = AppLocalization.tr("btn.hide_tray")
+        openSettingsBtn.text = AppLocalization.tr("btn.open_settings")
+        exitBtn.text = AppLocalization.tr("btn.exit")
+
+        expandBtn.text = "[+] " + AppLocalization.tr("btn.expand")
+        closeBtn.toolTipText = AppLocalization.tr("btn.exit")
+
+        langLabel.text = AppLocalization.tr("label.ui_language")
+        provLabel.text = AppLocalization.tr("label.audio_provider")
+        micLabel.text = AppLocalization.tr("label.microphone")
+        engLabel.text = AppLocalization.tr("label.engine")
+        hkLabel.text = AppLocalization.tr("label.hotkey")
+        insLabel.text = AppLocalization.tr("label.insertion_mode")
+        timingLabel.text = AppLocalization.tr("label.timing")
+        privLabel.text = AppLocalization.tr("label.clipboard_privacy")
+        autoLabel.text = AppLocalization.tr("label.system_startup")
+        resetBtn.text = AppLocalization.tr("btn.reset_defaults")
+        exportBtn.text = AppLocalization.tr("btn.export")
+        importBtn.text = AppLocalization.tr("btn.import")
+
+        execLabel.text = AppLocalization.tr("label.whisper_exec")
+        modLabel.text = AppLocalization.tr("label.multilingual_model")
+        spokenLangLabel.text = AppLocalization.tr("label.spoken_lang")
+        devLabel.text = AppLocalization.tr("label.inference_device")
+        transcribeFileBtn.text = AppLocalization.tr("btn.transcribe_file")
+
+        historySearchLabel.text = AppLocalization.tr("label.search_history")
+        historyTranscribeBtn.text = AppLocalization.tr("btn.transcribe_file")
+        clearBtn.text = AppLocalization.tr("btn.clear_history")
+
+        val currentAreaText = recentDictationArea.text
+        if (currentAreaText.isBlank() || isPlaceholderText(currentAreaText)) {
+            recentDictationArea.text = AppLocalization.tr("placeholder.no_dictations")
+        }
+
+        renderStatus(orchestrator.state.value)
+        dashboardAppBulb.repaint()
+        dashboardVoiceBulb.repaint()
+        dashboardModeBulb.repaint()
+        miniAppBulb.repaint()
+        miniVoiceBulb.repaint()
+        miniModeBulb.repaint()
+        revalidate()
+        repaint()
+    }
+
+    private fun isPlaceholderText(text: String): Boolean {
+        return text.startsWith("No dictations yet") ||
+            text.startsWith("Aucune dictée") ||
+            text.startsWith("Noch keine Diktate") ||
+            text.startsWith("Диктовки отсутствуют") ||
+            text.startsWith("文字起こしはまだありません") ||
+            text.startsWith("暂无听写记录") ||
+            text.startsWith("Henüz dikte yok") ||
+            text.startsWith("لا توجد تسجيلات") ||
+            text.startsWith("No hay dictados") ||
+            text.startsWith("Nessuna dettatura")
+    }
+
+    private fun updateFontsRecursively(comp: Component) {
+        val f = comp.font
+        if (f != null && f.family != FontManager.hackRegularFont.family && f.family != FontManager.hackBoldFont.family) {
+            val size = f.size2D
+            comp.font = if (f.isBold) FontManager.bold(size) else FontManager.regular(size)
+        }
+        if (comp is Container) {
+            for (child in comp.components) {
+                updateFontsRecursively(child)
+            }
+        }
+    }
+
     private fun setupLocalizationListener() {
         AppLocalization.addLanguageChangeListener {
-            SwingUtilities.invokeLater {
-                tabbedPane.setTitleAt(0, AppLocalization.tr("tab.dashboard"))
-                tabbedPane.setTitleAt(1, "⚙️ " + AppLocalization.tr("tab.settings"))
-                tabbedPane.setTitleAt(2, "🧠 " + AppLocalization.tr("tab.whisper"))
-                tabbedPane.setTitleAt(3, "📜 " + AppLocalization.tr("tab.history"))
-                renderStatus(orchestrator.state.value)
+            if (SwingUtilities.isEventDispatchThread()) {
+                updateLocalizedTexts()
+            } else {
+                SwingUtilities.invokeLater {
+                    updateLocalizedTexts()
+                }
             }
         }
     }
@@ -491,17 +685,21 @@ class PreferencesDialog(
 
             val openItem = MenuItem("Open GolosAI")
             openItem.addActionListener {
-                isVisible = true
-                toFront()
-                state = Frame.NORMAL
+                frame?.let { f ->
+                    f.isVisible = true
+                    f.toFront()
+                    f.state = Frame.NORMAL
+                }
             }
             popup.add(openItem)
 
             val settingsItem = MenuItem("Settings")
             settingsItem.addActionListener {
-                isVisible = true
-                toFront()
-                state = Frame.NORMAL
+                frame?.let { f ->
+                    f.isVisible = true
+                    f.toFront()
+                    f.state = Frame.NORMAL
+                }
                 tabbedPane.selectedIndex = 1
             }
             popup.add(settingsItem)
@@ -517,12 +715,14 @@ class PreferencesDialog(
             val icon = TrayIcon(createTrayImage(orchestrator.state.value), "GolosAI Speech Assistant", popup)
             icon.isImageAutoSize = true
             icon.addActionListener {
-                if (isVisible && isActive) {
-                    isVisible = false
-                } else {
-                    isVisible = true
-                    toFront()
-                    state = Frame.NORMAL
+                frame?.let { f ->
+                    if (f.isVisible && f.isActive) {
+                        f.isVisible = false
+                    } else {
+                        f.isVisible = true
+                        f.toFront()
+                        f.state = Frame.NORMAL
+                    }
                 }
             }
             tray.add(icon)
@@ -573,7 +773,7 @@ class PreferencesDialog(
         } catch (_: Throwable) {
         }
         orchestrator.stop()
-        dispose()
+        frame?.dispose()
         kotlin.system.exitProcess(0)
     }
 
@@ -590,7 +790,6 @@ class PreferencesDialog(
             }
 
         // 0. Interface Language Selector (FR, DE, RU, JP, CN, TR, AR, ES, IT, EN)
-        val langLabel = JLabel(AppLocalization.tr("label.ui_language"))
         panel.add(langLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -605,7 +804,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 1
         gbc.weightx = 0.32
-        val provLabel = JLabel(AppLocalization.tr("label.audio_provider"))
         panel.add(provLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -626,7 +824,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 2
         gbc.weightx = 0.32
-        val micLabel = JLabel(AppLocalization.tr("label.microphone"))
         panel.add(micLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -640,7 +837,7 @@ class PreferencesDialog(
             }
         }
         micPanel.add(micCombo, BorderLayout.NORTH)
-        val clueLabel = JLabel("💡 Tip: Select 🎙️ [Microphone] for voice, or 🎧 [System Output Monitor] for desktop audio/calls.")
+        val clueLabel = JLabel("Tip: Select [Microphone] for voice, or [System Output Monitor] for desktop audio/calls.")
         clueLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
         clueLabel.foreground = Color(100, 100, 100)
         micPanel.add(clueLabel, BorderLayout.SOUTH)
@@ -650,7 +847,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 3
         gbc.weightx = 0.32
-        val engLabel = JLabel(AppLocalization.tr("label.engine"))
         panel.add(engLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -668,7 +864,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 4
         gbc.weightx = 0.32
-        val hkLabel = JLabel(AppLocalization.tr("label.hotkey"))
         panel.add(hkLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -733,7 +928,7 @@ class PreferencesDialog(
                             recordBtn.background = null
                             saveCurrentConfig()
                         } else {
-                            recordBtn.text = "🎙️ Record Shortcut (Click & Press Keys)"
+                            recordBtn.text = "Record Shortcut (Click & Press Keys)"
                             recordBtn.background = null
                             JOptionPane.showMessageDialog(
                                 this@PreferencesDialog,
@@ -800,7 +995,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 5
         gbc.weightx = 0.32
-        val insLabel = JLabel(AppLocalization.tr("label.insertion_mode"))
         panel.add(insLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -814,7 +1008,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 6
         gbc.weightx = 0.32
-        val timingLabel = JLabel(AppLocalization.tr("label.timing"))
         panel.add(timingLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -829,7 +1022,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 7
         gbc.weightx = 0.32
-        val privLabel = JLabel(AppLocalization.tr("label.clipboard_privacy"))
         panel.add(privLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -850,7 +1042,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 8
         gbc.weightx = 0.32
-        val autoLabel = JLabel(AppLocalization.tr("label.system_startup"))
         panel.add(autoLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -866,10 +1057,7 @@ class PreferencesDialog(
         gbc.gridy = 9
         gbc.gridwidth = 2
         gbc.weightx = 1.0
-        val configBar = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 6))
-        val resetBtn = JButton("↺ " + AppLocalization.tr("btn.reset_defaults"))
-        val exportBtn = JButton("📤 " + AppLocalization.tr("btn.export"))
-        val importBtn = JButton("📥 " + AppLocalization.tr("btn.import"))
+        val configBar = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 4))
 
         styleMinimalistButton(resetBtn)
         styleMinimalistButton(exportBtn)
@@ -956,7 +1144,6 @@ class PreferencesDialog(
             }
 
         // 1. Whisper Executable Management
-        val execLabel = JLabel(AppLocalization.tr("label.whisper_exec"))
         panel.add(execLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -1004,7 +1191,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 1
         gbc.weightx = 0.32
-        val modLabel = JLabel(AppLocalization.tr("label.multilingual_model"))
         panel.add(modLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -1049,7 +1235,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 4
         gbc.weightx = 0.32
-        val spokenLangLabel = JLabel(AppLocalization.tr("label.spoken_lang"))
         panel.add(spokenLangLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -1083,7 +1268,6 @@ class PreferencesDialog(
         gbc.gridx = 0
         gbc.gridy = 6
         gbc.weightx = 0.32
-        val devLabel = JLabel(AppLocalization.tr("label.inference_device"))
         panel.add(devLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
@@ -1103,7 +1287,6 @@ class PreferencesDialog(
         panel.add(fileLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
-        val transcribeFileBtn = JButton("📁 " + AppLocalization.tr("btn.transcribe_file"))
         styleMinimalistButton(transcribeFileBtn)
         transcribeFileBtn.addActionListener {
             promptAndTranscribeAudioFile()
@@ -1120,22 +1303,20 @@ class PreferencesDialog(
         panel.border = EmptyBorder(10, 12, 10, 12)
 
         // Top Filter & Action Bar
-        val topBar = JPanel(BorderLayout(6, 6))
+        val topBar = JPanel(BorderLayout(8, 6))
         val searchBox = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
-        val sLabel = JLabel(AppLocalization.tr("label.search_history"))
-        searchBox.add(sLabel)
+        searchBox.isOpaque = false
+        searchBox.add(historySearchLabel)
+        historySearchField.columns = 12
         searchBox.add(historySearchField)
-        val historyTranscribeBtn = JButton("📁 " + AppLocalization.tr("btn.transcribe_file"))
-        styleMinimalistButton(historyTranscribeBtn)
-        historyTranscribeBtn.addActionListener { promptAndTranscribeAudioFile() }
-        searchBox.add(historyTranscribeBtn)
         topBar.add(searchBox, BorderLayout.WEST)
 
         val rightBox = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
-        historyCountLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
-        rightBox.add(historyCountLabel)
+        rightBox.isOpaque = false
+        styleMinimalistButton(historyTranscribeBtn)
+        historyTranscribeBtn.addActionListener { promptAndTranscribeAudioFile() }
+        rightBox.add(historyTranscribeBtn)
 
-        val clearBtn = JButton(AppLocalization.tr("btn.clear_history"))
         styleMinimalistButton(clearBtn)
         clearBtn.addActionListener {
             val confirm =
@@ -1152,7 +1333,17 @@ class PreferencesDialog(
         }
         rightBox.add(clearBtn)
         topBar.add(rightBox, BorderLayout.EAST)
-        panel.add(topBar, BorderLayout.NORTH)
+
+        val headerPanel = JPanel(BorderLayout(0, 4))
+        headerPanel.isOpaque = false
+        headerPanel.add(topBar, BorderLayout.NORTH)
+        val countPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
+        countPanel.isOpaque = false
+        historyCountLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
+        countPanel.add(historyCountLabel)
+        headerPanel.add(countPanel, BorderLayout.SOUTH)
+
+        panel.add(headerPanel, BorderLayout.NORTH)
 
         // Center Scrollable List
         historyListPanel.layout = BoxLayout(historyListPanel, BoxLayout.Y_AXIS)
@@ -1233,13 +1424,13 @@ class PreferencesDialog(
         topRow.add(infoLabel, BorderLayout.WEST)
 
         // Copy Button
-        val copyBtn = JButton("📋 Copy")
+        val copyBtn = JButton("Copy")
         styleMinimalistButton(copyBtn)
         copyBtn.addActionListener {
             val selection = StringSelection(entry.text)
             Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
-            copyBtn.text = "✓ Copied!"
-            Timer(1500) { copyBtn.text = "📋 Copy" }.apply {
+            copyBtn.text = "Copied!"
+            Timer(1500) { copyBtn.text = "Copy" }.apply {
                 isRepeats = false
                 start()
             }
@@ -1265,12 +1456,12 @@ class PreferencesDialog(
         val exists = File(foundPath).canExecute()
 
         if (exists) {
-            binaryStatusLabel.text = "✓ Ready: $foundPath"
+            binaryStatusLabel.text = "[OK] Ready: $foundPath"
             binaryStatusLabel.foreground = Color(0, 130, 0)
             binaryPathField.text = foundPath
             whisperEngine?.binaryPath = foundPath
         } else {
-            binaryStatusLabel.text = "✗ Not Found! Click 'Download whisper-cli' or 'Browse' to set executable."
+            binaryStatusLabel.text = "[!] Not Found! Click 'Download CLI' or 'Browse' to set executable."
             binaryStatusLabel.foreground = Color(180, 0, 0)
         }
     }
@@ -1321,12 +1512,12 @@ class PreferencesDialog(
         val selectedModel = WhisperModelInfo.AVAILABLE_MODELS[modelCombo.selectedIndex]
         val isDownloaded = modelDownloader.isModelDownloaded(selectedModel)
         if (isDownloaded) {
-            modelStatusLabel.text = "✓ Downloaded"
+            modelStatusLabel.text = "[OK] Downloaded"
             modelStatusLabel.foreground = Color(0, 140, 0)
             downloadModelBtn.text = "Re-download"
             whisperEngine?.modelPath = modelDownloader.getLocalModelFile(selectedModel).absolutePath
         } else {
-            modelStatusLabel.text = "✗ Not found locally"
+            modelStatusLabel.text = "[!] Not found locally"
             modelStatusLabel.foreground = Color(180, 0, 0)
             downloadModelBtn.text = "Download (${selectedModel.approximateSizeMb} MB)"
         }
@@ -1549,7 +1740,13 @@ class PreferencesDialog(
         }
     }
 
-    private fun renderStatus(state: DictationState) {
+    fun selectTab(index: Int) {
+        if (index in 0 until tabbedPane.tabCount) {
+            tabbedPane.selectedIndex = index
+        }
+    }
+
+    fun renderStatus(state: DictationState) {
         val timingShort = if (timingCombo.selectedIndex == 0) "Rel" else "Live"
         val insertShort = if (insertionModeCombo.selectedIndex == 0) "Direct" else "Clip"
         val hotkeyStr = orchestrator.currentHotkey.displayText
@@ -1561,6 +1758,7 @@ class PreferencesDialog(
             }
 
         val modeDisplay = "[$timingShort | $insertShort | $hotkeyStr]$bilingualSuffix"
+        val miniModeDisplay = "$hotkeyStr • $insertShort"
 
         // 1. Update App Bulb
         dashboardAppBulb.updateState(greenActive, greenGlow, AppLocalization.tr("bulb.app.title"), AppLocalization.tr("bulb.app.active"))
@@ -1572,34 +1770,34 @@ class PreferencesDialog(
                 val idleText = AppLocalization.tr("bulb.voice.idle")
                 dashboardVoiceBulb.updateState(greenActive, greenGlow, AppLocalization.tr("bulb.voice.title"), idleText)
                 miniVoiceBulb.updateState(greenActive, greenGlow, AppLocalization.tr("bulb.voice.title"), idleText)
-                pttButton.text = "🎙️ " + AppLocalization.tr("btn.hold_to_speak") + " ($hotkeyStr)"
+                pttButton.text = AppLocalization.tr("btn.hold_to_speak") + " ($hotkeyStr)"
                 pttButton.background = null
-                miniPttButton.text = "🎙️ Speak"
+                miniPttButton.text = "Speak"
                 miniPttButton.background = null
             }
             DictationState.RECORDING -> {
                 val recText = AppLocalization.tr("bulb.voice.listening")
                 dashboardVoiceBulb.updateState(amberListening, amberGlow, AppLocalization.tr("bulb.voice.title"), recText)
                 miniVoiceBulb.updateState(amberListening, amberGlow, AppLocalization.tr("bulb.voice.title"), recText)
-                pttButton.text = "🔴 " + AppLocalization.tr("btn.recording")
+                pttButton.text = "[REC] " + AppLocalization.tr("btn.recording")
                 pttButton.background = Color(255, 235, 235)
-                miniPttButton.text = "🔴 Rec"
+                miniPttButton.text = "[REC]"
                 miniPttButton.background = Color(255, 235, 235)
             }
             DictationState.PROCESSING -> {
                 val procText = AppLocalization.tr("bulb.voice.processing")
                 dashboardVoiceBulb.updateState(redProcessing, redGlow, AppLocalization.tr("bulb.voice.title"), procText)
                 miniVoiceBulb.updateState(redProcessing, redGlow, AppLocalization.tr("bulb.voice.title"), procText)
-                pttButton.text = "⏳ " + AppLocalization.tr("btn.processing")
+                pttButton.text = "[...] " + AppLocalization.tr("btn.processing")
                 pttButton.background = Color(245, 245, 245)
-                miniPttButton.text = "⏳ Proc"
+                miniPttButton.text = "[...]"
                 miniPttButton.background = Color(245, 245, 245)
             }
         }
 
         // 3. Update Mode Bulb
         dashboardModeBulb.updateState(blueMode, blueGlow, AppLocalization.tr("bulb.mode.title"), modeDisplay)
-        miniModeBulb.updateState(blueMode, blueGlow, AppLocalization.tr("bulb.mode.title"), modeDisplay)
+        miniModeBulb.updateState(blueMode, blueGlow, AppLocalization.tr("bulb.mode.title"), miniModeDisplay)
 
         updateTrayIcon(state)
     }
@@ -1638,7 +1836,8 @@ class PreferencesDialog(
         file: File,
         result: TranscriptionResult,
     ) {
-        val dialog = JDialog(this, "Transcription Result - ${file.name}", true)
+        val parentWindow = frame ?: SwingUtilities.getWindowAncestor(this)
+        val dialog = JDialog(parentWindow, "Transcription Result - ${file.name}", Dialog.ModalityType.APPLICATION_MODAL)
         dialog.setSize(540, 400)
         dialog.setLocationRelativeTo(this)
         dialog.layout = BorderLayout(10, 10)
@@ -1665,11 +1864,11 @@ class PreferencesDialog(
         dialog.add(scrollPane, BorderLayout.CENTER)
 
         val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 8))
-        val copyBtn = JButton("📋 Copy to Clipboard")
+        val copyBtn = JButton("Copy to Clipboard")
         styleMinimalistButton(copyBtn)
         copyBtn.addActionListener {
             copyToClipboard(result.text)
-            copyBtn.text = "✓ Copied!"
+            copyBtn.text = "Copied!"
         }
         val closeBtn = JButton("Close")
         styleMinimalistButton(closeBtn)

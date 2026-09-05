@@ -4,7 +4,6 @@ import org.slf4j.LoggerFactory
 import su.kamil.dev.golos.app.config.SettingsManager
 import su.kamil.dev.golos.app.history.HistoryManager
 import su.kamil.dev.golos.app.ui.PreferencesDialog
-import su.kamil.dev.golos.core.model.*
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
 import su.kamil.dev.golos.core.state.DictationStateMachine
 import su.kamil.dev.golos.system.audio.JavaSoundAudioCapture
@@ -138,7 +137,8 @@ fun main() {
                     historyManager = historyManager,
                     autoStartManager = autoStartManager,
                 )
-            dialog.isVisible = true
+            val frame = dialog.showInFrame()
+            frame.isVisible = true
         }
     } else {
         logger.info("Running in headless mode. Global hotkeys active.")
