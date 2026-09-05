@@ -30,8 +30,11 @@ fun main() {
     textInjector.initialize()
 
     // 3. Voice Backend Engines
-    val whisperModelPath = System.getenv("WHISPER_MODEL") ?: "models/ggml-base.bin"
-    val whisperBinary = System.getenv("WHISPER_BIN") ?: "whisper-cli"
+    val binaryManager = su.kamil.dev.golos.voice.download.WhisperBinaryManager()
+    val modelDownloader = su.kamil.dev.golos.voice.download.ModelDownloader()
+    val defaultModelInfo = su.kamil.dev.golos.voice.download.WhisperModelInfo.AVAILABLE_MODELS[1] // Base
+    val whisperModelPath = System.getenv("WHISPER_MODEL") ?: modelDownloader.getLocalModelFile(defaultModelInfo).absolutePath
+    val whisperBinary = binaryManager.findWhisperBinary()
 
     val engines = mutableListOf<SpeechToTextEngine>(
         MockSpeechToTextEngine(),

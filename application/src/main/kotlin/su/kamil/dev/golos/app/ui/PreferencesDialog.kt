@@ -8,16 +8,26 @@ import su.kamil.dev.golos.app.DictationOrchestrator
 import su.kamil.dev.golos.core.model.AudioDevice
 import su.kamil.dev.golos.core.model.DictationState
 import su.kamil.dev.golos.core.model.HotkeyConfig
+import su.kamil.dev.golos.core.model.InjectionConfig
+import su.kamil.dev.golos.core.model.InsertionMode
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
+import su.kamil.dev.golos.voice.download.ModelDownloader
+import su.kamil.dev.golos.voice.download.WhisperBinaryManager
+import su.kamil.dev.golos.voice.download.WhisperModelInfo
+import su.kamil.dev.golos.voice.engine.InferenceDevice
+import su.kamil.dev.golos.voice.engine.WhisperCppEngine
 import java.awt.*
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.*
+import javax.swing.border.CompoundBorder
 import javax.swing.border.EmptyBorder
+import javax.swing.border.TitledBorder
 
 /**
  * Swing Preferences and Status Window for GolosAI.
- * Allows configuring microphones, speech engines, and customizable multi-key hotkeys.
+ * Organized into tabs for General Dictation settings and Whisper.cpp Model/Hardware management.
  */
 class PreferencesDialog(
     private val orchestrator: DictationOrchestrator,
@@ -38,6 +48,33 @@ class PreferencesDialog(
     private val activeHotkeyLabel = JLabel(orchestrator.currentHotkey.displayText)
     private val applyHotkeyBtn = JButton("Apply")
 
+    // Privacy & Insertion Controls
+    private val insertionModeCombo = JComboBox(arrayOf("Direct Typing (Privacy-preserving)", "Clipboard Paste (Ctrl+V)"))
+    private val copyClipboardCheck = JCheckBox("Save transcription to clipboard", false)
+    private val fallbackClipboardCheck = JCheckBox("Save to clipboard if no active field focused", true)
+
+    // Whisper & Model Management
+    private val whisperEngine = availableEngines.filterIsInstance<WhisperCppEngine>().firstOrNull()
+    private val modelDownloader = ModelDownloader()
+    private val binaryManager = WhisperBinaryManager()
+
+    private val modelCombo = JComboBox<String>()
+    private val modelStatusLabel = JLabel("Status: Checking...")
+    private val downloadModelBtn = JButton("Download Model")
+    private val downloadProgressBar = JProgressBar(0, 100)
+    private val downloadCancelFlag = AtomicBoolean(false)
+
+    private val languageCombo = JComboBox(arrayOf(
+        "Auto-Detect (auto)", "English (en)", "Russian (ru)", "Spanish (es)",
+        "German (de)", "French (fr)", "Italian (it)", "Chinese (zh)", "Japanese (ja)"
+    ))
+    private val languageCodes = listOf("auto", "en", "ru", "es", "de", "fr", "it", "zh", "ja")
+
+    private val deviceCombo = JComboBox(arrayOf(
+        InferenceDevice.CPU.displayName,
+        InferenceDevice.GPU.displayName
+    ))
+
     private val coroutineScope = CoroutineScope(Dispatchers.Default + Job())
     private var availableDevices: List<AudioDevice> = emptyList()
 
@@ -48,13 +85,13 @@ class PreferencesDialog(
 
     private fun initUi() {
         defaultCloseOperation = HIDE_ON_CLOSE
-        setSize(540, 460)
+        setSize(620, 580)
         setLocationRelativeTo(null)
         layout = BorderLayout(10, 10)
 
         // Header Panel
-        val headerPanel = JPanel(BorderLayout())
-        headerPanel.border = EmptyBorder(16, 16, 8, 16)
+        val headerPanel = JPanel(BorderLayout(8, 8))
+        headerPanel.border = EmptyBorder(14, 16, 6, 16)
         val titleLabel = JLabel("GolosAI Dictation Assistant")
         titleLabel.font = Font(Font.SANS_SERIF, Font.BOLD, 18)
         headerPanel.add(titleLabel, BorderLayout.NORTH)
@@ -67,9 +104,41 @@ class PreferencesDialog(
         headerPanel.add(statusLabel, BorderLayout.SOUTH)
         add(headerPanel, BorderLayout.NORTH)
 
-        // Form Panel
-        val formPanel = JPanel(GridBagLayout())
-        formPanel.border = EmptyBorder(10, 16, 10, 16)
+        // Main Tabbed Content
+        val tabbedPane = JTabbedPane()
+        tabbedPane.addTab("Dictation & Hotkeys", createGeneralTab())
+        tabbedPane.addTab("Whisper Models & Hardware", createWhisperTab())
+        add(tabbedPane, BorderLayout.CENTER)
+
+        // Bottom Action Panel
+        val actionPanel = JPanel(BorderLayout(10, 10))
+        actionPanel.border = EmptyBorder(8, 16, 14, 16)
+
+        pttButton.font = Font(Font.SANS_SERIF, Font.BOLD, 14)
+        pttButton.preferredSize = Dimension(200, 46)
+        pttButton.isFocusPainted = false
+
+        pttButton.addMouseListener(object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent?) {
+                orchestrator.onPushToTalkPressed()
+            }
+
+            override fun mouseReleased(e: MouseEvent?) {
+                orchestrator.onPushToTalkReleased()
+            }
+        })
+
+        actionPanel.add(pttButton, BorderLayout.CENTER)
+        add(actionPanel, BorderLayout.SOUTH)
+
+        // Initial setup
+        syncInjectionConfig()
+        renderStatus(orchestrator.state.value)
+    }
+
+    private fun createGeneralTab(): JPanel {
+        val panel = JPanel(GridBagLayout())
+        panel.border = EmptyBorder(12, 14, 12, 14)
         val gbc = GridBagConstraints().apply {
             fill = GridBagConstraints.HORIZONTAL
             insets = Insets(6, 6, 6, 6)
@@ -79,7 +148,7 @@ class PreferencesDialog(
         }
 
         // 1. Microphone Device Selection
-        formPanel.add(JLabel("Microphone Input:"), gbc)
+        panel.add(JLabel("Microphone Input:"), gbc)
         gbc.gridx = 1
         gbc.weightx = 0.7
         refreshMicrophoneList()
@@ -89,13 +158,13 @@ class PreferencesDialog(
                 orchestrator.selectedDevice = availableDevices[idx]
             }
         }
-        formPanel.add(micCombo, gbc)
+        panel.add(micCombo, gbc)
 
         // 2. Speech-to-Text Engine Selection
         gbc.gridx = 0
         gbc.gridy = 1
         gbc.weightx = 0.3
-        formPanel.add(JLabel("Processing Engine:"), gbc)
+        panel.add(JLabel("Processing Engine:"), gbc)
         gbc.gridx = 1
         gbc.weightx = 0.7
         availableEngines.forEach { engineCombo.addItem(it.displayName) }
@@ -105,24 +174,24 @@ class PreferencesDialog(
                 orchestrator.speechEngine = availableEngines[idx]
             }
         }
-        formPanel.add(engineCombo, gbc)
+        panel.add(engineCombo, gbc)
 
         // 3. Active Hotkey Info
         gbc.gridx = 0
         gbc.gridy = 2
         gbc.weightx = 0.3
-        formPanel.add(JLabel("Active Shortcut:"), gbc)
+        panel.add(JLabel("Active Shortcut:"), gbc)
         gbc.gridx = 1
         gbc.weightx = 0.7
         activeHotkeyLabel.font = Font(Font.MONOSPACED, Font.BOLD, 13)
         activeHotkeyLabel.foreground = Color(0, 102, 204)
-        formPanel.add(activeHotkeyLabel, gbc)
+        panel.add(activeHotkeyLabel, gbc)
 
         // 4. Change Hotkey Configuration
         gbc.gridx = 0
         gbc.gridy = 3
         gbc.weightx = 0.3
-        formPanel.add(JLabel("Change Shortcut:"), gbc)
+        panel.add(JLabel("Change Shortcut:"), gbc)
         gbc.gridx = 1
         gbc.weightx = 0.7
 
@@ -167,33 +236,195 @@ class PreferencesDialog(
             }
         }
         hotkeyEditPanel.add(applyHotkeyBtn)
-        formPanel.add(hotkeyEditPanel, gbc)
+        panel.add(hotkeyEditPanel, gbc)
 
-        add(formPanel, BorderLayout.CENTER)
+        // 5. Text Insertion Mode
+        gbc.gridx = 0
+        gbc.gridy = 4
+        gbc.weightx = 0.3
+        panel.add(JLabel("Insertion Mode:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        insertionModeCombo.addActionListener { syncInjectionConfig() }
+        panel.add(insertionModeCombo, gbc)
 
-        // Bottom Action Panel
-        val actionPanel = JPanel(BorderLayout(10, 10))
-        actionPanel.border = EmptyBorder(10, 16, 16, 16)
+        // 6. Clipboard Privacy
+        gbc.gridx = 0
+        gbc.gridy = 5
+        gbc.weightx = 0.3
+        panel.add(JLabel("Clipboard Privacy:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        val privacyPanel = JPanel(GridLayout(2, 1, 2, 2))
+        copyClipboardCheck.addActionListener { syncInjectionConfig() }
+        fallbackClipboardCheck.addActionListener { syncInjectionConfig() }
+        privacyPanel.add(copyClipboardCheck)
+        privacyPanel.add(fallbackClipboardCheck)
+        panel.add(privacyPanel, gbc)
 
-        pttButton.font = Font(Font.SANS_SERIF, Font.BOLD, 14)
-        pttButton.preferredSize = Dimension(200, 48)
-        pttButton.isFocusPainted = false
+        return panel
+    }
 
-        pttButton.addMouseListener(object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent?) {
-                orchestrator.onPushToTalkPressed()
+    private fun createWhisperTab(): JPanel {
+        val panel = JPanel(GridBagLayout())
+        panel.border = EmptyBorder(12, 14, 12, 14)
+        val gbc = GridBagConstraints().apply {
+            fill = GridBagConstraints.HORIZONTAL
+            insets = Insets(6, 6, 6, 6)
+            gridx = 0
+            gridy = 0
+            weightx = 0.3
+        }
+
+        // 1. Model Selector
+        panel.add(JLabel("Multilingual Model:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        WhisperModelInfo.AVAILABLE_MODELS.forEach { modelCombo.addItem(it.name) }
+        modelCombo.selectedIndex = 1 // default to Base
+        modelCombo.addActionListener { updateModelStatus() }
+        panel.add(modelCombo, gbc)
+
+        // 2. Model Status & Download Button
+        gbc.gridx = 0
+        gbc.gridy = 1
+        gbc.weightx = 0.3
+        panel.add(JLabel("Model File Status:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+
+        val downloadActionPanel = JPanel(FlowLayout(FlowLayout.LEFT, 8, 0))
+        downloadActionPanel.add(modelStatusLabel)
+        downloadActionPanel.add(downloadModelBtn)
+        downloadModelBtn.addActionListener { startModelDownload() }
+        panel.add(downloadActionPanel, gbc)
+
+        // 3. Download Progress
+        gbc.gridx = 0
+        gbc.gridy = 2
+        gbc.weightx = 0.3
+        panel.add(JLabel("Download Progress:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        downloadProgressBar.isStringPainted = true
+        downloadProgressBar.string = "Idle"
+        panel.add(downloadProgressBar, gbc)
+
+        // 4. Language Selection
+        gbc.gridx = 0
+        gbc.gridy = 3
+        gbc.weightx = 0.3
+        panel.add(JLabel("Spoken Language:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        languageCombo.addActionListener {
+            val idx = languageCombo.selectedIndex
+            if (idx in languageCodes.indices && whisperEngine != null) {
+                whisperEngine.language = languageCodes[idx]
             }
+        }
+        panel.add(languageCombo, gbc)
 
-            override fun mouseReleased(e: MouseEvent?) {
-                orchestrator.onPushToTalkReleased()
+        // 5. Inference Device Selection (CPU vs GPU)
+        gbc.gridx = 0
+        gbc.gridy = 4
+        gbc.weightx = 0.3
+        panel.add(JLabel("Inference Device:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        deviceCombo.addActionListener {
+            if (whisperEngine != null) {
+                whisperEngine.device = if (deviceCombo.selectedIndex == 0) InferenceDevice.CPU else InferenceDevice.GPU
             }
-        })
+        }
+        panel.add(deviceCombo, gbc)
 
-        actionPanel.add(pttButton, BorderLayout.CENTER)
-        add(actionPanel, BorderLayout.SOUTH)
+        // 6. Binary Path info
+        gbc.gridx = 0
+        gbc.gridy = 5
+        gbc.weightx = 0.3
+        panel.add(JLabel("Whisper Executable:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        val binaryPath = binaryManager.findWhisperBinary()
+        val binLabel = JLabel(binaryPath)
+        binLabel.font = Font(Font.MONOSPACED, Font.PLAIN, 11)
+        panel.add(binLabel, gbc)
 
-        // Initial status render
-        renderStatus(orchestrator.state.value)
+        updateModelStatus()
+        return panel
+    }
+
+    private fun updateModelStatus() {
+        val selectedModel = WhisperModelInfo.AVAILABLE_MODELS[modelCombo.selectedIndex]
+        val isDownloaded = modelDownloader.isModelDownloaded(selectedModel)
+        if (isDownloaded) {
+            modelStatusLabel.text = "✓ Downloaded"
+            modelStatusLabel.foreground = Color(0, 140, 0)
+            downloadModelBtn.text = "Re-download"
+            // Update engine model path
+            whisperEngine?.modelPath = modelDownloader.getLocalModelFile(selectedModel).absolutePath
+        } else {
+            modelStatusLabel.text = "✗ Not found locally"
+            modelStatusLabel.foreground = Color(180, 0, 0)
+            downloadModelBtn.text = "Download (${selectedModel.approximateSizeMb} MB)"
+        }
+    }
+
+    private fun startModelDownload() {
+        val selectedModel = WhisperModelInfo.AVAILABLE_MODELS[modelCombo.selectedIndex]
+        downloadModelBtn.isEnabled = false
+        downloadProgressBar.value = 0
+        downloadProgressBar.string = "Connecting..."
+        downloadCancelFlag.set(false)
+
+        coroutineScope.launch {
+            val result = modelDownloader.downloadModel(
+                model = selectedModel,
+                cancelFlag = downloadCancelFlag,
+                onProgress = { bytesDownloaded, totalBytes, percent ->
+                    SwingUtilities.invokeLater {
+                        downloadProgressBar.value = percent
+                        val mbDownloaded = bytesDownloaded / (1024 * 1024)
+                        val mbTotal = totalBytes / (1024 * 1024)
+                        downloadProgressBar.string = "$percent% ($mbDownloaded MB / $mbTotal MB)"
+                    }
+                }
+            )
+
+            SwingUtilities.invokeLater {
+                downloadModelBtn.isEnabled = true
+                if (result.isSuccess) {
+                    val file = result.getOrThrow()
+                    whisperEngine?.modelPath = file.absolutePath
+                    updateModelStatus()
+                    downloadProgressBar.string = "Completed"
+                    JOptionPane.showMessageDialog(
+                        this@PreferencesDialog,
+                        "Whisper model downloaded successfully:\n${file.absolutePath}",
+                        "Download Complete",
+                        JOptionPane.INFORMATION_MESSAGE
+                    )
+                } else {
+                    downloadProgressBar.string = "Failed"
+                    JOptionPane.showMessageDialog(
+                        this@PreferencesDialog,
+                        "Download failed: ${result.exceptionOrNull()?.message}",
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE
+                    )
+                }
+            }
+        }
+    }
+
+    private fun syncInjectionConfig() {
+        val mode = if (insertionModeCombo.selectedIndex == 0) InsertionMode.DIRECT_TYPING else InsertionMode.CLIPBOARD_PASTE
+        orchestrator.injectionConfig = InjectionConfig(
+            mode = mode,
+            copyToClipboard = copyClipboardCheck.isSelected,
+            copyToClipboardIfNoField = fallbackClipboardCheck.isSelected
+        )
     }
 
     private fun refreshMicrophoneList() {

@@ -58,4 +58,21 @@ class VoiceBackendTest {
         assertEquals("Test transcription", result.text)
         assertTrue(result.confidence > 0.9f)
     }
+
+    @Test
+    fun `test WhisperModelInfo list has expected models`() {
+        val models = su.kamil.dev.golos.voice.download.WhisperModelInfo.AVAILABLE_MODELS
+        assertTrue(models.isNotEmpty())
+        assertTrue(models.any { it.id == "tiny" })
+        assertTrue(models.any { it.id == "base" })
+        assertTrue(models.all { it.isMultilingual })
+    }
+
+    @Test
+    fun `test WhisperBinaryManager returns candidate binary path`() {
+        val manager = su.kamil.dev.golos.voice.download.WhisperBinaryManager()
+        val bin = manager.findWhisperBinary()
+        assertNotNull(bin)
+        assertTrue(bin.contains("whisper"))
+    }
 }

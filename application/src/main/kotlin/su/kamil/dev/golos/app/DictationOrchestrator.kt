@@ -31,6 +31,7 @@ class DictationOrchestrator(
     var selectedDevice: AudioDevice? = null
     var currentHotkey: HotkeyConfig = HotkeyConfig.DEFAULT
         private set
+    var injectionConfig: su.kamil.dev.golos.core.model.InjectionConfig = su.kamil.dev.golos.core.model.InjectionConfig()
 
     val state: StateFlow<DictationState> = stateMachine.state
 
@@ -107,7 +108,7 @@ class DictationOrchestrator(
                         )
 
                         if (result.text.isNotBlank()) {
-                            textInjector.injectText(result.text)
+                            textInjector.injectText(result.text, injectionConfig)
                         } else {
                             logger.info("Transcription result is blank; skipping injection.")
                         }

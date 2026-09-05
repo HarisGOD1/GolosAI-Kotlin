@@ -46,7 +46,7 @@ class DictationOrchestratorTest {
     private class FakeTextInjector : TextInjectorPort {
         val injected = mutableListOf<String>()
 
-        override fun injectText(text: String): Result<Unit> {
+        override fun injectText(text: String, config: su.kamil.dev.golos.core.model.InjectionConfig): Result<Unit> {
             injected.add(text)
             return Result.success(Unit)
         }

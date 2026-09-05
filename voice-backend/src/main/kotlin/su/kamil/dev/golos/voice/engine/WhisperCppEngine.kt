@@ -10,14 +10,20 @@ import su.kamil.dev.golos.voice.audio.AudioPreprocessor
 import java.io.File
 import java.util.concurrent.TimeUnit
 
+enum class InferenceDevice(val displayName: String) {
+    CPU("CPU (Multi-threaded AVX)"),
+    GPU("GPU (Auto-Accelerated)")
+}
+
 /**
- * Whisper.cpp speech engine runner for local GGML/GGUF models.
+ * Whisper.cpp speech engine runner for local multilingual GGML models.
  */
 class WhisperCppEngine(
-    val modelPath: String,
-    val binaryPath: String = "whisper-cli",
-    val language: String = "auto",
-    val threads: Int = Runtime.getRuntime().availableProcessors().coerceAtMost(4),
+    var modelPath: String,
+    var binaryPath: String = "whisper-cli",
+    var language: String = "auto",
+    var device: InferenceDevice = InferenceDevice.CPU,
+    var threads: Int = Runtime.getRuntime().availableProcessors().coerceAtMost(4),
     override val id: String = "whisper-cpp",
     override val displayName: String = "Whisper.cpp (Local GGML)"
 ) : SpeechToTextEngine {
@@ -27,7 +33,7 @@ class WhisperCppEngine(
     override suspend fun initialize(): Result<Unit> = withContext(Dispatchers.IO) {
         val modelFile = File(modelPath)
         if (!modelFile.exists()) {
-            logger.warn("Whisper model file does not exist at: $modelPath")
+            logger.warn("Whisper model file does not exist at: {}", modelPath)
             return@withContext Result.failure(IllegalArgumentException("Model file not found: $modelPath"))
         }
         Result.success(Unit)
@@ -51,16 +57,33 @@ class WhisperCppEngine(
                 "--no-timestamps"
             )
 
-            logger.debug("Executing whisper command: {}", cmd.joinToString(" "))
-            val process = ProcessBuilder(cmd)
-                .redirectErrorStream(true)
-                .start()
+            if (device == InferenceDevice.CPU) {
+                cmd.add("--no-gpu")
+            }
+
+            logger.info("Executing whisper-cli (device: {}, lang: {}, model: {}): {}",
+                device, language, File(modelPath).name, cmd.joinToString(" ")
+            )
+
+            val process = try {
+                ProcessBuilder(cmd)
+                    .redirectErrorStream(true)
+                    .start()
+            } catch (e: Exception) {
+                logger.error("Failed to start whisper-cli process at path '{}'", binaryPath, e)
+                return@withContext TranscriptionResult(
+                    text = "[Error: whisper-cli executable not found at '$binaryPath'. Please check binary path or install whisper.cpp]",
+                    durationMs = System.currentTimeMillis() - startTime,
+                    isFinal = true,
+                    confidence = 0.0f
+                )
+            }
 
             val output = process.inputStream.bufferedReader().readText()
             val finished = process.waitFor(30, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
-                throw IllegalStateException("Whisper process timed out")
+                throw IllegalStateException("Whisper process timed out after 30 seconds")
             }
 
             val cleanedText = cleanWhisperOutput(output)
@@ -84,7 +107,9 @@ class WhisperCppEngine(
                 line.isNotEmpty() &&
                         !line.startsWith("whisper_") &&
                         !line.startsWith("system_info:") &&
-                        !line.startsWith("main:")
+                        !line.startsWith("main:") &&
+                        !line.startsWith("output_") &&
+                        !line.contains("ggml_")
             }
             .joinToString(" ")
             .trim()

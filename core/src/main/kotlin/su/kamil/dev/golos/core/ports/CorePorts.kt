@@ -3,6 +3,7 @@ package su.kamil.dev.golos.core.ports
 import su.kamil.dev.golos.core.model.AudioChunk
 import su.kamil.dev.golos.core.model.AudioDevice
 import su.kamil.dev.golos.core.model.HotkeyConfig
+import su.kamil.dev.golos.core.model.InjectionConfig
 import su.kamil.dev.golos.core.model.TranscriptionResult
 
 /**
@@ -46,5 +47,5 @@ interface GlobalHotkeyHook {
  */
 interface TextInjectorPort {
     fun initialize(): Result<Unit> = Result.success(Unit)
-    fun injectText(text: String): Result<Unit>
+    fun injectText(text: String, config: InjectionConfig = InjectionConfig()): Result<Unit>
 }

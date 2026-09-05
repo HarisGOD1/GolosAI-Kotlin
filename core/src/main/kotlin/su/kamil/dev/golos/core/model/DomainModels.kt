@@ -60,3 +60,17 @@ data class HotkeyConfig(
         }
     }
 }
+
+enum class InsertionMode {
+    /** Synthesizes direct character keystrokes into the active field without touching the clipboard. */
+    DIRECT_TYPING,
+
+    /** Pastes text via system clipboard (Ctrl+V) */
+    CLIPBOARD_PASTE
+}
+
+data class InjectionConfig(
+    val mode: InsertionMode = InsertionMode.DIRECT_TYPING,
+    val copyToClipboard: Boolean = false, // Disabled by default for privacy
+    val copyToClipboardIfNoField: Boolean = true // Fallback to clipboard if active input is missing
+)
