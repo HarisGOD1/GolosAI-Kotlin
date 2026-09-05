@@ -17,6 +17,7 @@ import javax.swing.UIManager
 private val logger = LoggerFactory.getLogger("GolosAI-Main")
 
 fun main() {
+    println("Hi Kostya!")
     logger.info("Initializing GolosAI Speech-to-Text Assistant...")
 
     // 1. Core State Machine
