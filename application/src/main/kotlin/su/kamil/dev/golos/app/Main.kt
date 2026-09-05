@@ -64,6 +64,24 @@ fun main() {
         displayName = "Whisper.cpp (${File(configuredBinary).name})"
     )
 
+    // Automatically download whisper-cli binary in the background by default if missing
+    if (!binaryManager.isBinaryAvailable(configuredBinary)) {
+        logger.info("whisper-cli is not present locally. Initiating background download by default...")
+        Thread({
+            binaryManager.downloadPrecompiledBinary { pct, status ->
+                logger.debug("Auto-downloading whisper-cli: {}% ({})", (pct * 100).toInt(), status)
+            }.onSuccess { bin ->
+                whisperEngine.binaryPath = bin.absolutePath
+                logger.info("whisper-cli binary automatically downloaded and ready at: {}", bin.absolutePath)
+            }.onFailure { err ->
+                logger.warn("Automatic whisper-cli download failed: {}", err.message)
+            }
+        }, "Golos-WhisperAutoDownloader").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
     val engines = mutableListOf<SpeechToTextEngine>(
         MockSpeechToTextEngine(),
         whisperEngine

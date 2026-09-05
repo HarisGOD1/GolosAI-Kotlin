@@ -102,6 +102,31 @@ class WhisperBinaryManager(
         }
     }
 
+    /**
+     * Ensures whisper-cli is present locally. If not found, automatically downloads
+     * the precompiled binary archive by default into ~/.cache/golos-ai/bin/.
+     */
+    fun ensureBinaryPresent(
+        customPath: String? = null,
+        onProgress: (Float, String) -> Unit = { _, _ -> }
+    ): String {
+        val existing = findWhisperBinary(customPath)
+        if (isBinaryAvailable(existing)) {
+            return existing
+        }
+
+        logger.info("whisper-cli executable not found locally. Auto-downloading precompiled binary by default...")
+        val downloaded = downloadPrecompiledBinary(onProgress)
+        return if (downloaded.isSuccess) {
+            val bin = downloaded.getOrThrow().absolutePath
+            logger.info("whisper-cli auto-downloaded successfully: {}", bin)
+            bin
+        } else {
+            logger.warn("Automatic whisper-cli download failed: {}. Fallback to default.", downloaded.exceptionOrNull()?.message)
+            existing
+        }
+    }
+
     fun downloadPrecompiledBinary(onProgress: (Float, String) -> Unit = { _, _ -> }): Result<File> = runCatching {
         val os = System.getProperty("os.name").lowercase()
         val arch = System.getProperty("os.arch").lowercase()

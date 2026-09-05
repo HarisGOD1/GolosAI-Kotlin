@@ -52,7 +52,9 @@ class WhisperCppEngine(
             val resolvedBin = if (File(binaryPath).canExecute()) {
                 binaryPath
             } else {
-                su.kamil.dev.golos.voice.download.WhisperBinaryManager().findWhisperBinary(binaryPath)
+                val bin = su.kamil.dev.golos.voice.download.WhisperBinaryManager().ensureBinaryPresent(binaryPath)
+                this@WhisperCppEngine.binaryPath = bin
+                bin
             }
 
             val cmd = mutableListOf(
