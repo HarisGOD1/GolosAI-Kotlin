@@ -145,16 +145,25 @@ class WhisperBinaryManager(
         }
 
         onProgress(0.1f, "Connecting to GitHub releases...")
-        val conn = URI(downloadUrl).toURL().openConnection() as HttpURLConnection
-        conn.instanceFollowRedirects = true
-        conn.connect()
+        val client = java.net.http.HttpClient.newBuilder()
+            .followRedirects(java.net.http.HttpClient.Redirect.ALWAYS)
+            .connectTimeout(java.time.Duration.ofSeconds(20))
+            .build()
+        val request = java.net.http.HttpRequest.newBuilder()
+            .uri(URI(downloadUrl))
+            .GET()
+            .build()
+        val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofInputStream())
+        if (response.statusCode() !in 200..299) {
+            throw java.io.IOException("HTTP error ${response.statusCode()} while downloading $downloadUrl")
+        }
 
-        val totalBytes = conn.contentLengthLong
+        val totalBytes = response.headers().firstValueAsLong("Content-Length").orElse(-1L)
         val isZip = downloadUrl.endsWith(".zip")
         val tempArchive = File.createTempFile("whisper_bin_", if (isZip) ".zip" else ".tar.gz")
 
         try {
-            conn.inputStream.use { input ->
+            response.body().use { input ->
                 tempArchive.outputStream().use { output ->
                     val buffer = ByteArray(32768)
                     var bytesRead: Int
