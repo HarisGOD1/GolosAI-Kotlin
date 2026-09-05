@@ -140,6 +140,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "Reset all settings to initial defaults",
                     "tip.export" to "Export settings to YAML file",
                     "tip.import" to "Import settings from YAML file",
+                    "metric.current_title" to "CURRENT TEXT",
+                    "metric.history_mean_title" to "HISTORY MEAN",
+                    "metric.all_time_title" to "ALL TIME",
+                    "opt.trigger.hold" to "Hold to Talk (Continuous press)",
+                    "opt.trigger.toggle" to "Toggle On/Off (Press to start/stop)",
+                    "label.trigger_mode" to "Hotkey Trigger Mode:",
                 ),
             AppLanguage.FR to
                 mapOf(
@@ -240,6 +246,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "Restaurer les paramètres par défaut",
                     "tip.export" to "Exporter les paramètres en YAML",
                     "tip.import" to "Importer les paramètres depuis YAML",
+                    "metric.current_title" to "TEXTE ACTUEL",
+                    "metric.history_mean_title" to "MOYENNE HISTORIQUE",
+                    "metric.all_time_title" to "TOUT TEMPS",
+                    "opt.trigger.hold" to "Maintenir pour parler",
+                    "opt.trigger.toggle" to "Bascule Marche/Arrêt",
+                    "label.trigger_mode" to "Mode de déclenchement :",
                 ),
             AppLanguage.DE to
                 mapOf(
@@ -340,6 +352,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "Alle Einstellungen auf Standard zurücksetzen",
                     "tip.export" to "Einstellungen in YAML-Datei exportieren",
                     "tip.import" to "Einstellungen aus YAML-Datei importieren",
+                    "metric.current_title" to "AKTUELLER TEXT",
+                    "metric.history_mean_title" to "VERLAUFS-DURCHSCHNITT",
+                    "metric.all_time_title" to "GESAMTZEIT",
+                    "opt.trigger.hold" to "Gedrückt halten zum Sprechen",
+                    "opt.trigger.toggle" to "Umschalten Ein/Aus",
+                    "label.trigger_mode" to "Auslösemodus:",
                 ),
             AppLanguage.RU to
                 mapOf(
@@ -440,6 +458,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "Сбросить все настройки к начальным",
                     "tip.export" to "Экспортировать настройки в YAML",
                     "tip.import" to "Импортировать настройки из YAML",
+                    "metric.current_title" to "ТЕКУЩИЙ ТЕКСТ",
+                    "metric.history_mean_title" to "СРЕДНЕЕ ПО ИСТОРИИ",
+                    "metric.all_time_title" to "ЗА ВСЁ ВРЕМЯ",
+                    "opt.trigger.hold" to "Удержание клавиши (Push-to-Talk)",
+                    "opt.trigger.toggle" to "Переключатель вкл/выкл (Toggle)",
+                    "label.trigger_mode" to "Режим активации:",
                 ),
             AppLanguage.JP to
                 mapOf(
@@ -540,6 +564,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "すべての設定を初期値にリセット",
                     "tip.export" to "設定をYAMLファイルにエクスポート",
                     "tip.import" to "YAMLファイルから設定をインポート",
+                    "metric.current_title" to "現在のテキスト",
+                    "metric.history_mean_title" to "履歴の平均",
+                    "metric.all_time_title" to "全期間",
+                    "opt.trigger.hold" to "長押しで通話 (ホールド)",
+                    "opt.trigger.toggle" to "オン/オフ切り替え (トグル)",
+                    "label.trigger_mode" to "トリガーモード:",
                 ),
             AppLanguage.CN to
                 mapOf(
@@ -640,6 +670,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "恢复所有设置为初始默认值",
                     "tip.export" to "导出设置到 YAML 文件",
                     "tip.import" to "从 YAML 文件导入设置",
+                    "metric.current_title" to "当前文本",
+                    "metric.history_mean_title" to "历史平均",
+                    "metric.all_time_title" to "累计总计",
+                    "opt.trigger.hold" to "按住说话 (长按)",
+                    "opt.trigger.toggle" to "开关切换 (点击开始/停止)",
+                    "label.trigger_mode" to "触发模式:",
                 ),
             AppLanguage.TR to
                 mapOf(
@@ -740,6 +776,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "Tüm ayarları varsayılanlara sıfırla",
                     "tip.export" to "Ayarları YAML dosyasına aktar",
                     "tip.import" to "Ayarları YAML dosyasından yükle",
+                    "metric.current_title" to "GEÇERLİ METİN",
+                    "metric.history_mean_title" to "GEÇMİŞ ORTALAMASI",
+                    "metric.all_time_title" to "TÜM ZAMANLAR",
+                    "opt.trigger.hold" to "Konuşmak İçin Basılı Tut",
+                    "opt.trigger.toggle" to "Aç/Kapat Geçişi",
+                    "label.trigger_mode" to "Tetikleme Modu:",
                 ),
             AppLanguage.AR to
                 mapOf(
@@ -840,6 +882,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "استعادة الإعدادات الافتراضية الأولية",
                     "tip.export" to "تصدير الإعدادات إلى ملف YAML",
                     "tip.import" to "استيراد الإعدادات من ملف YAML",
+                    "metric.current_title" to "النص الحالي",
+                    "metric.history_mean_title" to "متوسط السجل",
+                    "metric.all_time_title" to "كل الأوقات",
+                    "opt.trigger.hold" to "اضغط مطولاً للتحدث",
+                    "opt.trigger.toggle" to "تبديل تشغيل/إيقاف",
+                    "label.trigger_mode" to "وضع التنشيط:",
                 ),
             AppLanguage.ES to
                 mapOf(
@@ -940,6 +988,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "Restablecer todos los ajustes predeterminados",
                     "tip.export" to "Exportar ajustes a archivo YAML",
                     "tip.import" to "Importar ajustes desde archivo YAML",
+                    "metric.current_title" to "TEXTO ACTUAL",
+                    "metric.history_mean_title" to "MEDIA HISTORIAL",
+                    "metric.all_time_title" to "TIEMPO TOTAL",
+                    "opt.trigger.hold" to "Mantener para hablar",
+                    "opt.trigger.toggle" to "Alternar encendido/apagado",
+                    "label.trigger_mode" to "Modo de activación:",
                 ),
             AppLanguage.IT to
                 mapOf(
@@ -1040,6 +1094,12 @@ object AppLocalization {
                     "tip.reset_defaults" to "Ripristina tutte le impostazioni predefinite",
                     "tip.export" to "Esporta impostazioni in file YAML",
                     "tip.import" to "Importa impostazioni da file YAML",
+                    "metric.current_title" to "TESTO CORRENTE",
+                    "metric.history_mean_title" to "MEDIA CRONOLOGIA",
+                    "metric.all_time_title" to "TUTTO IL TEMPO",
+                    "opt.trigger.hold" to "Tieni premuto per parlare",
+                    "opt.trigger.toggle" to "Attiva/Disattiva",
+                    "label.trigger_mode" to "Modalità attivazione:",
                 ),
         )
 

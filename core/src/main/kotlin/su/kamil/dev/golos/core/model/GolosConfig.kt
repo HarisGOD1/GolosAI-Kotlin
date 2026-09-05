@@ -11,6 +11,7 @@ data class HotkeySettings(
     val alt: Boolean = false,
     val meta: Boolean = false,
     val keyCode: Int = 119,
+    val triggerMode: String = "HOLD_TO_TALK",
 ) {
     fun toHotkeyConfig(): HotkeyConfig =
         HotkeyConfig(
@@ -20,6 +21,7 @@ data class HotkeySettings(
             alt = alt,
             meta = meta,
             keyCode = keyCode,
+            triggerMode = runCatching { TriggerMode.valueOf(triggerMode) }.getOrDefault(TriggerMode.HOLD_TO_TALK),
         )
 
     companion object {
@@ -31,6 +33,7 @@ data class HotkeySettings(
                 alt = c.alt,
                 meta = c.meta,
                 keyCode = c.keyCode,
+                triggerMode = c.triggerMode.name,
             )
     }
 }

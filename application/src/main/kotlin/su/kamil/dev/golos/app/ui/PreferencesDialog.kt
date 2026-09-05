@@ -22,6 +22,7 @@ import su.kamil.dev.golos.core.model.InjectionTiming
 import su.kamil.dev.golos.core.model.InsertionMode
 import su.kamil.dev.golos.core.model.InsertionSettings
 import su.kamil.dev.golos.core.model.TranscriptionResult
+import su.kamil.dev.golos.core.model.TriggerMode
 import su.kamil.dev.golos.core.model.WhisperSettings
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
 import su.kamil.dev.golos.system.autostart.AutoStartManager
@@ -205,6 +206,18 @@ class PreferencesDialog(
     private val recordBtn = JButton(AppLocalization.tr("btn.record_shortcut"))
     private val plusKeyLabel = JLabel(AppLocalization.tr("label.hotkey_plus_key"))
 
+    // Hotkey Trigger Mode (Hold to Talk vs Toggle On/Off - Criterion D-03)
+    private val triggerModeCombo = JComboBox<String>()
+    private val triggerModeLabel = JLabel(AppLocalization.tr("label.trigger_mode"))
+
+    // Efficiency Metrics Cards (Criterion F-05, N-17, M-02)
+    val currentMetricsCard = EfficiencyMetricCard(AppLocalization.tr("metric.current_title"))
+    val historyMetricsCard = EfficiencyMetricCard(AppLocalization.tr("metric.history_mean_title"))
+    val allTimeMetricsCard = EfficiencyMetricCard(AppLocalization.tr("metric.all_time_title"))
+
+    // Undecorated Floating Mini-Bar Window (Criterion B-11, D-08)
+    var floatingBarWindow: IndicatorFloatingBar? = null
+
     // Privacy & Insertion Controls
     private val insertionModeCombo = JComboBox<String>()
     private val timingCombo = JComboBox<String>()
@@ -378,6 +391,13 @@ class PreferencesDialog(
             ),
         )
         refreshComboModel(
+            triggerModeCombo,
+            listOf(
+                AppLocalization.tr("opt.trigger.hold"),
+                AppLocalization.tr("opt.trigger.toggle"),
+            ),
+        )
+        refreshComboModel(
             insertionModeCombo,
             listOf(
                 AppLocalization.tr("opt.ins.direct"),
@@ -428,6 +448,7 @@ class PreferencesDialog(
         loadInitialConfig()
         observeState()
         wireHistoryListener()
+        refreshMetricsCards()
     }
 
     fun showInFrame(): JFrame {
@@ -558,18 +579,39 @@ class PreferencesDialog(
             expandedBounds = frame?.bounds ?: Rectangle(100, 100, 700, 720)
             add(collapsedBarPanel, BorderLayout.CENTER)
             frame?.let { f ->
-                f.isAlwaysOnTop = true
-                f.isResizable = false
-                f.setSize(640, 68)
-                f.minimumSize = Dimension(540, 60)
+                if (floatingBarWindow == null) {
+                    floatingBarWindow =
+                        IndicatorFloatingBar(
+                            owner = f,
+                            orchestrator = orchestrator,
+                            miniAppBulb = miniAppBulb,
+                            miniVoiceBulb = miniVoiceBulb,
+                            miniModeBulb = miniModeBulb,
+                            expandAction = { toggleCollapse() },
+                            exitAction = { exitApplication() },
+                        )
+                }
+                floatingBarWindow?.let { win ->
+                    val barWidth = 480
+                    val barHeight = 54
+                    val x = f.x + (f.width - barWidth) / 2
+                    val y = f.y + 20
+                    win.setLocation(x.coerceAtLeast(0), y.coerceAtLeast(0))
+                    win.updateStatus(orchestrator.state.value)
+                    win.isVisible = true
+                }
+                f.isVisible = false
             }
         } else {
+            floatingBarWindow?.isVisible = false
             add(mainContainer, BorderLayout.CENTER)
             frame?.let { f ->
                 f.isAlwaysOnTop = false
                 f.isResizable = true
                 f.minimumSize = Dimension(580, 480)
                 f.bounds = expandedBounds
+                f.isVisible = true
+                f.toFront()
             }
         }
         revalidate()
@@ -607,9 +649,12 @@ class PreferencesDialog(
 
         mainPanel.add(topHeader, BorderLayout.NORTH)
 
-        // Center Content: Push to Talk + Recent Dictation
+        // Center Content: Push to Talk + Efficiency Metrics + Recent Dictation
         val centerPanel = JPanel(BorderLayout(10, 12))
         centerPanel.isOpaque = false
+
+        val topActionBox = JPanel(BorderLayout(0, 10))
+        topActionBox.isOpaque = false
 
         pttButton.font = FontManager.bold(14f)
         pttButton.preferredSize = Dimension(220, 52)
@@ -626,7 +671,17 @@ class PreferencesDialog(
                 }
             },
         )
-        centerPanel.add(pttButton, BorderLayout.NORTH)
+        topActionBox.add(pttButton, BorderLayout.NORTH)
+
+        // 3 Efficiency Metrics Panels: Current Text, History Mean, All Time
+        val metricsGrid = JPanel(GridLayout(1, 3, 8, 0))
+        metricsGrid.isOpaque = false
+        metricsGrid.add(currentMetricsCard)
+        metricsGrid.add(historyMetricsCard)
+        metricsGrid.add(allTimeMetricsCard)
+        topActionBox.add(metricsGrid, BorderLayout.CENTER)
+
+        centerPanel.add(topActionBox, BorderLayout.NORTH)
 
         val recentBox = JPanel(BorderLayout(6, 6))
         recentBox.isOpaque = false
@@ -745,6 +800,10 @@ class PreferencesDialog(
             micLabel.text = AppLocalization.tr("label.microphone")
             engLabel.text = AppLocalization.tr("label.engine")
             hkLabel.text = AppLocalization.tr("label.hotkey")
+            triggerModeLabel.text = AppLocalization.tr("label.trigger_mode")
+            currentMetricsCard.titleLabel.text = AppLocalization.tr("metric.current_title")
+            historyMetricsCard.titleLabel.text = AppLocalization.tr("metric.history_mean_title")
+            allTimeMetricsCard.titleLabel.text = AppLocalization.tr("metric.all_time_title")
             insLabel.text = AppLocalization.tr("label.insertion_mode")
             timingLabel.text = AppLocalization.tr("label.timing")
             privLabel.text = AppLocalization.tr("label.clipboard_privacy")
@@ -1212,9 +1271,29 @@ class PreferencesDialog(
         hotkeyOuterPanel.add(hotkeyEditPanel, BorderLayout.SOUTH)
         panel.add(hotkeyOuterPanel, gbc)
 
-        // 5. Text Insertion Mode
+        // 4b. Hotkey Trigger Mode (Hold to Talk vs Toggle On/Off - Criterion D-03)
         gbc.gridx = 0
         gbc.gridy = 5
+        gbc.weightx = 0.32
+        panel.add(triggerModeLabel, gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.68
+        triggerModeCombo.addActionListener {
+            if (isUpdatingLocalization) return@addActionListener
+            val newMode = if (triggerModeCombo.selectedIndex == 1) TriggerMode.TOGGLE_ON_OFF else TriggerMode.HOLD_TO_TALK
+            val cur = orchestrator.currentHotkey
+            if (cur.triggerMode != newMode) {
+                val updated = cur.copy(triggerMode = newMode)
+                orchestrator.updateHotkey(updated)
+                saveCurrentConfig()
+                renderStatus(orchestrator.state.value)
+            }
+        }
+        panel.add(triggerModeCombo, gbc)
+
+        // 5. Text Insertion Mode
+        gbc.gridx = 0
+        gbc.gridy = 6
         gbc.weightx = 0.32
         panel.add(insLabel, gbc)
         gbc.gridx = 1
@@ -1228,7 +1307,7 @@ class PreferencesDialog(
 
         // 6. Insertion Timing (On the Fly vs On Release)
         gbc.gridx = 0
-        gbc.gridy = 6
+        gbc.gridy = 7
         gbc.weightx = 0.32
         panel.add(timingLabel, gbc)
         gbc.gridx = 1
@@ -1243,7 +1322,7 @@ class PreferencesDialog(
 
         // 7. Clipboard Privacy Options
         gbc.gridx = 0
-        gbc.gridy = 7
+        gbc.gridy = 8
         gbc.weightx = 0.32
         panel.add(privLabel, gbc)
         gbc.gridx = 1
@@ -1263,7 +1342,7 @@ class PreferencesDialog(
 
         // 8. System Autostart
         gbc.gridx = 0
-        gbc.gridy = 8
+        gbc.gridy = 9
         gbc.weightx = 0.32
         panel.add(autoLabel, gbc)
         gbc.gridx = 1
@@ -1277,7 +1356,7 @@ class PreferencesDialog(
 
         // 9. Configuration Toolbar (Reset, Export, Import)
         gbc.gridx = 0
-        gbc.gridy = 9
+        gbc.gridy = 10
         gbc.gridwidth = 2
         gbc.weightx = 1.0
         val configBar = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 4))
@@ -1817,6 +1896,17 @@ class PreferencesDialog(
         }
     }
 
+    private fun refreshMetricsCards() {
+        val cur = orchestrator.metricsHandler.currentTextMetrics
+        currentMetricsCard.updateCurrentReplica(cur)
+
+        val histMean = orchestrator.metricsHandler.computeHistoryMean(historyManager.getAll())
+        historyMetricsCard.updateHistoryMean(histMean)
+
+        val allTime = orchestrator.metricsHandler.getAllTimeMetrics()
+        allTimeMetricsCard.updateAllTime(allTime)
+    }
+
     private fun wireHistoryListener() {
         val oldCallback = orchestrator.onTranscriptionCompleted
         orchestrator.onTranscriptionCompleted = { result, engine ->
@@ -1831,6 +1921,7 @@ class PreferencesDialog(
             SwingUtilities.invokeLater {
                 recentDictationArea.text = result.text
                 refreshHistoryList()
+                refreshMetricsCards()
             }
         }
     }
@@ -1850,6 +1941,7 @@ class PreferencesDialog(
         val hk = c.hotkey.toHotkeyConfig()
         orchestrator.updateHotkey(hk)
         activeHotkeyLabel.text = hk.displayText
+        triggerModeCombo.selectedIndex = if (hk.triggerMode == TriggerMode.TOGGLE_ON_OFF) 1 else 0
         ctrlCheck.isSelected = c.hotkey.ctrl
         shiftCheck.isSelected = c.hotkey.shift
         altCheck.isSelected = c.hotkey.alt
@@ -2020,6 +2112,7 @@ class PreferencesDialog(
         dashboardModeBulb.updateState(blueMode, blueGlow, AppLocalization.tr("bulb.mode.title"), modeDisplay)
         miniModeBulb.updateState(blueMode, blueGlow, AppLocalization.tr("bulb.mode.title"), miniModeDisplay)
 
+        floatingBarWindow?.updateStatus(state)
         updateTrayIcon(state)
     }
 

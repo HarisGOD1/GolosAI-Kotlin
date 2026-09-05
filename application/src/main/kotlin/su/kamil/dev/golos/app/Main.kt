@@ -28,6 +28,13 @@ fun main() {
     println("Hi Kostya!")
     logger.info("Initializing GolosAI Speech-to-Text Assistant...")
 
+    // 0. Single-Instance Mutex (Criterion B-13)
+    val singleInstanceMutex = SingleInstanceMutex()
+    if (!singleInstanceMutex.tryAcquire()) {
+        logger.warn("GolosAI is already running. Exiting second instance cleanly.")
+        return
+    }
+
     // 1. Settings & Persistence Contract
     val settingsManager = SettingsManager()
     val config = settingsManager.load()
@@ -119,6 +126,7 @@ fun main() {
         Thread {
             logger.info("Shutting down GolosAI...")
             orchestrator.stop()
+            singleInstanceMutex.release()
         },
     )
 

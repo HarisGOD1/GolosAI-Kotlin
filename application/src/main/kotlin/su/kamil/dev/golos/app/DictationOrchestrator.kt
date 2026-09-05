@@ -6,19 +6,22 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.slf4j.LoggerFactory
+import su.kamil.dev.golos.app.metrics.EfficiencyMetricsHandler
 import su.kamil.dev.golos.core.model.AudioDevice
 import su.kamil.dev.golos.core.model.DictationState
 import su.kamil.dev.golos.core.model.HotkeyConfig
 import su.kamil.dev.golos.core.model.TranscriptionResult
+import su.kamil.dev.golos.core.model.TriggerMode
 import su.kamil.dev.golos.core.ports.AudioCapturePort
 import su.kamil.dev.golos.core.ports.GlobalHotkeyHook
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
 import su.kamil.dev.golos.core.ports.TextInjectorPort
 import su.kamil.dev.golos.core.state.DictationStateMachine
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Main orchestrator coordinating the dictation workflow:
- * Hotkey events -> Audio capture -> Speech recognition -> Text injection.
+ * Hotkey events -> Audio capture -> Speech recognition -> Text injection -> Efficiency Metrics.
  */
 class DictationOrchestrator(
     val stateMachine: DictationStateMachine,
@@ -26,6 +29,7 @@ class DictationOrchestrator(
     var speechEngine: SpeechToTextEngine,
     val hotkeyHook: GlobalHotkeyHook,
     val textInjector: TextInjectorPort,
+    val metricsHandler: EfficiencyMetricsHandler = EfficiencyMetricsHandler(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private val logger = LoggerFactory.getLogger(DictationOrchestrator::class.java)
@@ -40,6 +44,13 @@ class DictationOrchestrator(
     private var streamingJob: kotlinx.coroutines.Job? = null
     private val liveAudioStream = java.io.ByteArrayOutputStream()
     private val committedWords = mutableListOf<String>()
+    private val recordingStartTime = AtomicLong(0L)
+
+    companion object {
+        private const val MIN_REPLICA_DURATION_MS = 200L
+        private const val STREAMING_DELAY_MS = 400L
+        private const val MIN_STREAMING_BYTES = 16000
+    }
 
     /**
      * Initializes hotkey binding and starts listening for push-to-talk events.
@@ -47,15 +58,16 @@ class DictationOrchestrator(
     fun start(hotkeyConfig: HotkeyConfig = HotkeyConfig.DEFAULT): Result<Unit> {
         this.currentHotkey = hotkeyConfig
         logger.info(
-            "Starting DictationOrchestrator with engine '{}' and key '{}'",
+            "Starting DictationOrchestrator with engine '{}' and key '{}' (mode: {})",
             speechEngine.displayName,
             hotkeyConfig.displayText,
+            hotkeyConfig.triggerMode,
         )
 
         return hotkeyHook.register(
             config = hotkeyConfig,
-            onKeyDown = { onPushToTalkPressed() },
-            onKeyUp = { onPushToTalkReleased() },
+            onKeyDown = { onHotkeyEvent(isKeyDown = true) },
+            onKeyUp = { onHotkeyEvent(isKeyDown = false) },
         )
     }
 
@@ -64,8 +76,15 @@ class DictationOrchestrator(
      */
     suspend fun transcribeFile(file: java.io.File): TranscriptionResult {
         logger.info("Transcribing file '{}' with engine '{}'...", file.name, speechEngine.displayName)
+        val startTime = System.currentTimeMillis()
         val result = speechEngine.transcribeFile(file)
+        val latencyMs = System.currentTimeMillis() - startTime
         if (result.text.isNotBlank()) {
+            metricsHandler.recordReplica(
+                text = result.text,
+                audioDurationMs = result.durationMs,
+                latencyMs = latencyMs,
+            )
             onTranscriptionCompleted?.invoke(result, speechEngine)
         }
         return result
@@ -75,21 +94,40 @@ class DictationOrchestrator(
      * Updates global hotkey binding at runtime.
      */
     fun updateHotkey(newConfig: HotkeyConfig): Result<Unit> {
-        logger.info("Rebinding hotkey to: {}", newConfig.displayText)
+        logger.info("Rebinding hotkey to: {} (mode: {})", newConfig.displayText, newConfig.triggerMode)
         this.currentHotkey = newConfig
         hotkeyHook.unregister()
         return hotkeyHook.register(
             config = newConfig,
-            onKeyDown = { onPushToTalkPressed() },
-            onKeyUp = { onPushToTalkReleased() },
+            onKeyDown = { onHotkeyEvent(isKeyDown = true) },
+            onKeyUp = { onHotkeyEvent(isKeyDown = false) },
         )
     }
 
+    private fun onHotkeyEvent(isKeyDown: Boolean) {
+        if (currentHotkey.triggerMode == TriggerMode.TOGGLE_ON_OFF) {
+            if (isKeyDown) {
+                if (stateMachine.state.value == DictationState.RECORDING) {
+                    onPushToTalkReleased()
+                } else if (stateMachine.state.value == DictationState.IDLE) {
+                    onPushToTalkPressed()
+                }
+            }
+        } else {
+            if (isKeyDown) {
+                onPushToTalkPressed()
+            } else {
+                onPushToTalkReleased()
+            }
+        }
+    }
+
     /**
-     * Triggered when push-to-talk key is held down.
+     * Triggered when push-to-talk key is pressed.
      */
     fun onPushToTalkPressed() {
         if (stateMachine.startRecording()) {
+            recordingStartTime.set(System.currentTimeMillis())
             logger.info("State changed -> RECORDING. Starting audio capture.")
             synchronized(liveAudioStream) {
                 liveAudioStream.reset()
@@ -121,12 +159,12 @@ class DictationOrchestrator(
 
     private suspend fun startLiveStreamingLoop() {
         while (stateMachine.state.value == DictationState.RECORDING) {
-            kotlinx.coroutines.delay(400)
+            kotlinx.coroutines.delay(STREAMING_DELAY_MS)
             if (stateMachine.state.value != DictationState.RECORDING) break
 
             val currentBytes =
                 synchronized(liveAudioStream) {
-                    if (liveAudioStream.size() >= 16000) {
+                    if (liveAudioStream.size() >= MIN_STREAMING_BYTES) {
                         liveAudioStream.toByteArray()
                     } else {
                         null
@@ -160,7 +198,7 @@ class DictationOrchestrator(
     }
 
     /**
-     * Triggered when push-to-talk key is released.
+     * Triggered when push-to-talk key is released or toggled off.
      */
     fun onPushToTalkReleased() {
         streamingJob?.cancel()
@@ -180,8 +218,12 @@ class DictationOrchestrator(
                 try {
                     if (recordedAudio != null && recordedAudio.samples.isNotEmpty()) {
                         // Criterion D-10: A delay of less than 200 ms does not create an empty replica
-                        if (recordedAudio.durationMs < 200) {
-                            logger.info("Push-to-talk press too short ({} ms < 200 ms); ignoring empty replica.", recordedAudio.durationMs)
+                        if (recordedAudio.durationMs < MIN_REPLICA_DURATION_MS) {
+                            logger.info(
+                                "Push-to-talk press too short ({} ms < {} ms); ignoring empty replica.",
+                                recordedAudio.durationMs,
+                                MIN_REPLICA_DURATION_MS,
+                            )
                             return@launch
                         }
 
@@ -191,14 +233,24 @@ class DictationOrchestrator(
                             speechEngine.displayName,
                         )
 
+                        val inferenceStart = System.currentTimeMillis()
                         val result = speechEngine.transcribe(recordedAudio)
+                        val inferenceLatency = System.currentTimeMillis() - inferenceStart
+
                         logger.info(
-                            "Transcription completed in {} ms: \"{}\"",
+                            "Transcription completed in {} ms (latency: {} ms): \"{}\"",
                             result.durationMs,
+                            inferenceLatency,
                             result.text,
                         )
 
                         if (result.text.isNotBlank()) {
+                            metricsHandler.recordReplica(
+                                text = result.text,
+                                audioDurationMs = recordedAudio.durationMs,
+                                latencyMs = inferenceLatency,
+                            )
+
                             onTranscriptionCompleted?.invoke(result, speechEngine)
                             if (injectionConfig.timing == su.kamil.dev.golos.core.model.InjectionTiming.ON_THE_FLY) {
                                 val finalWords = result.text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }

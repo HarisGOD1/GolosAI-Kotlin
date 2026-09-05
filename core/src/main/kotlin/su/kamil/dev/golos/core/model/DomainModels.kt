@@ -14,6 +14,14 @@ data class TranscriptionResult(
     val confidence: Float = 1.0f,
 )
 
+enum class TriggerMode {
+    /** Press and hold key to dictate; release key to transcribe and inject (Default). */
+    HOLD_TO_TALK,
+
+    /** Press key once to start recording; press key a second time to stop and transcribe. */
+    TOGGLE_ON_OFF,
+}
+
 data class HotkeyConfig(
     val keyName: String,
     val ctrl: Boolean = false,
@@ -21,6 +29,7 @@ data class HotkeyConfig(
     val alt: Boolean = false,
     val meta: Boolean = false,
     val keyCode: Int = 0,
+    val triggerMode: TriggerMode = TriggerMode.HOLD_TO_TALK,
 ) {
     val displayText: String
         get() =
@@ -35,7 +44,10 @@ data class HotkeyConfig(
     companion object {
         val DEFAULT = HotkeyConfig(keyName = "F8")
 
-        fun parse(input: String): HotkeyConfig {
+        fun parse(
+            input: String,
+            triggerMode: TriggerMode = TriggerMode.HOLD_TO_TALK,
+        ): HotkeyConfig {
             val tokens = input.split("+", "-").map { it.trim() }.filter { it.isNotEmpty() }
             var ctrl = false
             var shift = false
@@ -58,6 +70,7 @@ data class HotkeyConfig(
                 shift = shift,
                 alt = alt,
                 meta = meta,
+                triggerMode = triggerMode,
             )
         }
     }
@@ -82,6 +95,6 @@ enum class InjectionTiming {
 data class InjectionConfig(
     val mode: InsertionMode = InsertionMode.DIRECT_TYPING,
     val timing: InjectionTiming = InjectionTiming.ON_KEY_RELEASE,
-    val copyToClipboard: Boolean = false, // Disabled by default for privacy
-    val copyToClipboardIfNoField: Boolean = true, // Fallback to clipboard if active input is missing
+    val copyToClipboard: Boolean = false,
+    val copyToClipboardIfNoField: Boolean = true,
 )

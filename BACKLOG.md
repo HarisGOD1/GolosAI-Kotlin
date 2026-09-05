@@ -220,7 +220,7 @@
 
 ---
 
-### 25. Undecorated Floating Mini-Bar Refactor (Bypass OS WM Minimum Window Clamping) [Planned]
+### 25. Undecorated Floating Mini-Bar Refactor (Bypass OS WM Minimum Window Clamping) [Implemented]
 - **Identified Problem**:
   - In-place resizing of the decorated `JFrame` causes X11 and desktop Window Managers (e.g. GNOME Mutter, XFWM, KWin) to clamp the window to the WM minimum decorated size (~480x360), preventing a true compact floating indicator bar.
 - **Implementation Strategy**:
@@ -253,7 +253,7 @@
 
 ---
 
-### 27. Dashboard Efficiency Metrics Panels (Current Text, History Mean, All Time) [Planned]
+### 27. Dashboard Efficiency Metrics Panels (Current Text, History Mean, All Time) [Implemented]
 - **UI Presentation on Dashboard (Tab 0)**:
   - Add 3 clean metric card panels between the Push-to-Talk button and Recent Dictation box:
     - **Panel A: `[Current Text]` (Last Dictation)**:
