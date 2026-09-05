@@ -11,7 +11,6 @@ import su.kamil.dev.golos.core.ports.TextInjectorPort
 import su.kamil.dev.golos.system.x11.X11Lib
 import java.awt.Robot
 import java.awt.Toolkit
-import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.awt.datatransfer.Transferable
 import java.awt.event.KeyEvent
@@ -22,14 +21,20 @@ import java.util.concurrent.TimeUnit
  */
 interface XtstLib : Library {
     companion object {
-        val INSTANCE: XtstLib? = try {
-            Native.load("Xtst", XtstLib::class.java)
-        } catch (_: Throwable) {
-            null
-        }
+        val INSTANCE: XtstLib? =
+            try {
+                Native.load("Xtst", XtstLib::class.java)
+            } catch (_: Throwable) {
+                null
+            }
     }
 
-    fun XTestFakeKeyEvent(display: Pointer?, keycode: Int, is_press: Boolean, delay: Long): Int
+    fun XTestFakeKeyEvent(
+        display: Pointer?,
+        keycode: Int,
+        is_press: Boolean,
+        delay: Long,
+    ): Int
 }
 
 /**
@@ -42,86 +47,94 @@ interface XtstLib : Library {
  * - Safe instant clipboard restoration if temporary paste is used
  */
 class ActiveWindowTextInjector(
-    private val pasteDelayMs: Long = 80
+    private val pasteDelayMs: Long = 80,
 ) : TextInjectorPort {
-
     private val logger = LoggerFactory.getLogger(ActiveWindowTextInjector::class.java)
     private var cachedRobot: Robot? = null
 
-    override fun initialize(): Result<Unit> = runCatching {
-        logger.info("Initializing text injector at startup...")
-        if (XtstLib.INSTANCE != null) {
-            logger.info("Native X11 XTEST extension detected and ready (zero-portal hardware input).")
-            return@runCatching
-        }
-
-        if (!java.awt.GraphicsEnvironment.isHeadless()) {
-            try {
-                logger.info("Pre-initializing AWT Robot. If your desktop prompts for RemoteDesktop/input sharing, click Allow.")
-                cachedRobot = Robot().apply { autoDelay = 15 }
-                logger.info("AWT Robot input synthesizer successfully initialized at startup.")
-            } catch (e: Exception) {
-                logger.warn("AWT Robot startup pre-initialization could not obtain permissions: {}", e.message)
+    override fun initialize(): Result<Unit> =
+        runCatching {
+            logger.info("Initializing text injector at startup...")
+            if (XtstLib.INSTANCE != null) {
+                logger.info("Native X11 XTEST extension detected and ready (zero-portal hardware input).")
+                return@runCatching
             }
-        }
-    }
 
-    override fun injectText(text: String, config: InjectionConfig): Result<Unit> = runCatching {
-        if (text.isBlank()) {
-            logger.debug("Skipping text injection for empty text")
-            return@runCatching
-        }
-
-        if (java.awt.GraphicsEnvironment.isHeadless()) {
-            logger.debug("Headless environment detected; skipping hardware keystroke injection.")
-            return@runCatching
-        }
-
-        val hasInputField = isInputFieldFocused()
-        logger.info("Injecting text (length: {}, mode: {}, fieldFocused: {}, copyToClipboard: {})",
-            text.length, config.mode, hasInputField, config.copyToClipboard
-        )
-
-        // Case 1: No active input field detected
-        if (!hasInputField) {
-            logger.warn("No active text input field detected.")
-            if (config.copyToClipboardIfNoField || config.copyToClipboard) {
-                copyToClipboard(text)
-                logger.info("Saved transcription to clipboard because no active input field was focused.")
-            }
-            return@runCatching
-        }
-
-        var typingSucceeded = false
-
-        // Case 2: Direct Typing Mode (Privacy-preserving, does not overwrite clipboard)
-        if (config.mode == InsertionMode.DIRECT_TYPING) {
-            typingSucceeded = tryDirectTyping(text)
-            if (typingSucceeded) {
-                logger.info("Direct typing successfully injected text without touching clipboard.")
-            } else {
-                logger.warn("Direct typing was unviable; falling back to temporary paste with instant clipboard restoration.")
-                typingSucceeded = pasteWithInstantRestore(text)
+            if (!java.awt.GraphicsEnvironment.isHeadless()) {
+                try {
+                    logger.info("Pre-initializing AWT Robot. If your desktop prompts for RemoteDesktop/input sharing, click Allow.")
+                    cachedRobot = Robot().apply { autoDelay = 15 }
+                    logger.info("AWT Robot input synthesizer successfully initialized at startup.")
+                } catch (e: Exception) {
+                    logger.warn("AWT Robot startup pre-initialization could not obtain permissions: {}", e.message)
+                }
             }
         }
 
-        // Case 3: Clipboard Paste Mode
-        if (!typingSucceeded && config.mode == InsertionMode.CLIPBOARD_PASTE) {
+    override fun injectText(
+        text: String,
+        config: InjectionConfig,
+    ): Result<Unit> =
+        runCatching {
+            if (text.isBlank()) {
+                logger.debug("Skipping text injection for empty text")
+                return@runCatching
+            }
+
+            if (java.awt.GraphicsEnvironment.isHeadless()) {
+                logger.debug("Headless environment detected; skipping hardware keystroke injection.")
+                return@runCatching
+            }
+
+            val hasInputField = isInputFieldFocused()
+            logger.info(
+                "Injecting text (length: {}, mode: {}, fieldFocused: {}, copyToClipboard: {})",
+                text.length,
+                config.mode,
+                hasInputField,
+                config.copyToClipboard,
+            )
+
+            // Case 1: No active input field detected
+            if (!hasInputField) {
+                logger.warn("No active text input field detected.")
+                if (config.copyToClipboardIfNoField || config.copyToClipboard) {
+                    copyToClipboard(text)
+                    logger.info("Saved transcription to clipboard because no active input field was focused.")
+                }
+                return@runCatching
+            }
+
+            var typingSucceeded = false
+
+            // Case 2: Direct Typing Mode (Privacy-preserving, does not overwrite clipboard)
+            if (config.mode == InsertionMode.DIRECT_TYPING) {
+                typingSucceeded = tryDirectTyping(text)
+                if (typingSucceeded) {
+                    logger.info("Direct typing successfully injected text without touching clipboard.")
+                } else {
+                    logger.warn("Direct typing was unviable; falling back to temporary paste with instant clipboard restoration.")
+                    typingSucceeded = pasteWithInstantRestore(text)
+                }
+            }
+
+            // Case 3: Clipboard Paste Mode
+            if (!typingSucceeded && config.mode == InsertionMode.CLIPBOARD_PASTE) {
+                if (config.copyToClipboard) {
+                    // User wants text left in clipboard
+                    copyToClipboard(text)
+                    dispatchPasteKeystroke()
+                } else {
+                    // User does NOT want text left in clipboard -> paste with instant restore
+                    pasteWithInstantRestore(text)
+                }
+            }
+
+            // Always copy to clipboard if user explicitly enabled it
             if (config.copyToClipboard) {
-                // User wants text left in clipboard
                 copyToClipboard(text)
-                dispatchPasteKeystroke()
-            } else {
-                // User does NOT want text left in clipboard -> paste with instant restore
-                pasteWithInstantRestore(text)
             }
         }
-
-        // Always copy to clipboard if user explicitly enabled it
-        if (config.copyToClipboard) {
-            copyToClipboard(text)
-        }
-    }
 
     private fun isInputFieldFocused(): Boolean {
         val x11 = X11Lib.INSTANCE ?: return true
@@ -164,8 +177,9 @@ class ActiveWindowTextInjector(
 
     private fun tryXdotoolType(text: String): Boolean {
         return try {
-            val process = ProcessBuilder("xdotool", "type", "--clearmodifiers", "--delay", "5", "--", text)
-                .start()
+            val process =
+                ProcessBuilder("xdotool", "type", "--clearmodifiers", "--delay", "5", "--", text)
+                    .start()
             val finished = process.waitFor(5, TimeUnit.SECONDS)
             finished && process.exitValue() == 0
         } catch (_: Exception) {
@@ -188,7 +202,11 @@ class ActiveWindowTextInjector(
             for (ch in text) {
                 val code = resolveAsciiKeycode(x11, display, ch)
                 if (code == 0) {
-                    logger.debug("Cannot resolve X11 keycode for character '{}' (0x{}); aborting direct typing before sending any keystrokes.", ch, Integer.toHexString(ch.code))
+                    logger.debug(
+                        "Cannot resolve X11 keycode for character '{}' (0x{}); aborting direct typing before sending any keystrokes.",
+                        ch,
+                        Integer.toHexString(ch.code),
+                    )
                     return false
                 }
                 keycodes.add(code)
@@ -218,21 +236,33 @@ class ActiveWindowTextInjector(
         }
     }
 
-    private fun resolveAsciiKeycode(x11: X11Lib, display: Pointer, ch: Char): Int {
-        val keysym = when (ch) {
-            ' ' -> 0x0020L
-            '\n' -> x11.XStringToKeysym("Return").takeIf { it != 0L } ?: 0xFF0DL
-            '\t' -> x11.XStringToKeysym("Tab").takeIf { it != 0L } ?: 0xFF09L
-            else -> {
-                if (ch.code in 32..126) ch.code.toLong()
-                else 0L
+    private fun resolveAsciiKeycode(
+        x11: X11Lib,
+        display: Pointer,
+        ch: Char,
+    ): Int {
+        val keysym =
+            when (ch) {
+                ' ' -> 0x0020L
+                '\n' -> x11.XStringToKeysym("Return").takeIf { it != 0L } ?: 0xFF0DL
+                '\t' -> x11.XStringToKeysym("Tab").takeIf { it != 0L } ?: 0xFF09L
+                else -> {
+                    if (ch.code in 32..126) {
+                        ch.code.toLong()
+                    } else {
+                        0L
+                    }
+                }
             }
-        }
         if (keysym == 0L) return 0
         return x11.XKeysymToKeycode(display, keysym).toInt() and 0xFF
     }
 
-    private fun sendXTestKey(xtst: XtstLib, display: Pointer, keycode: Int) {
+    private fun sendXTestKey(
+        xtst: XtstLib,
+        display: Pointer,
+        keycode: Int,
+    ) {
         if (keycode != 0) {
             xtst.XTestFakeKeyEvent(display, keycode, true, 0)
             xtst.XTestFakeKeyEvent(display, keycode, false, 0)
@@ -248,17 +278,19 @@ class ActiveWindowTextInjector(
         val clipboard = toolkit.systemClipboard
 
         // 1. Snapshot previous clipboard
-        val previousContent: Transferable? = try {
-            clipboard.getContents(null)
-        } catch (_: Exception) {
-            null
-        }
+        val previousContent: Transferable? =
+            try {
+                clipboard.getContents(null)
+            } catch (_: Exception) {
+                null
+            }
 
         // 2. Set new text and dispatch paste
         clipboard.setContents(StringSelection(text), null)
         try {
             toolkit.systemSelection?.setContents(StringSelection(text), null)
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
 
         Thread.sleep(pasteDelayMs)
         val pasteOk = dispatchPasteKeystroke()
@@ -285,7 +317,8 @@ class ActiveWindowTextInjector(
         toolkit.systemClipboard.setContents(selection, null)
         try {
             toolkit.systemSelection?.setContents(selection, null)
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
         logger.info("Copied transcription to system clipboard.")
     }
 
@@ -349,8 +382,9 @@ class ActiveWindowTextInjector(
 
     private fun tryXdotoolPaste(): Boolean {
         return try {
-            val process = ProcessBuilder("xdotool", "key", "--clearmodifiers", "ctrl+v")
-                .start()
+            val process =
+                ProcessBuilder("xdotool", "key", "--clearmodifiers", "ctrl+v")
+                    .start()
             val finished = process.waitFor(2, TimeUnit.SECONDS)
             finished && process.exitValue() == 0
         } catch (_: Exception) {

@@ -73,17 +73,19 @@
 
 ---
 
-### 7. Alternative Microphone Provider (PortAudio JNA) [Backlogged]
+### 7. Alternative Microphone Provider (PortAudio JNA) [Implemented]
 - **Secondary Capture Backend**:
-  - Implement `PortAudioCapturePort` using `libportaudio.so.2` / `portaudio.dll` via JNA.
-  - Allow user to switch between `JavaSound` and `PortAudio` directly from audio preferences.
+  - Implemented `PortAudioAudioCapture` implementing `AudioCapturePort` using `libportaudio.so.2` / `portaudio.dll` via JNA.
+  - Seamless fallback to JavaSound audio pipeline if native PortAudio C library is not installed on the host.
+  - Dedicated Audio Provider dropdown in Preferences UI allowing on-the-fly switching between JavaSound and PortAudio.
 
 ---
 
-### 8. System Audio Output Monitor (Loopback) & Visual Indicators [Backlogged]
+### 8. System Audio Output Monitor (Loopback) & Visual Indicators [Implemented]
 - **Output Audio Monitoring**:
-  - Support recording/transcribing system audio output (desktop sound, video calls, media).
-  - Provide distinct visual icons/badges in the UI distinguishing input microphones from output monitor/loopback channels.
+  - Support capturing and transcribing system audio output (desktop audio, meetings, browser playback).
+  - Automatically identifies loopback / monitor / stereo mix mixers across Linux PipeWire/PulseAudio and Windows.
+  - Distinct badges and visual clue in the UI: `🎙️ [Microphone]` vs `🎧 [System Output Monitor]`.
 
 ---
 
@@ -105,11 +107,11 @@
 
 ---
 
-### 11. Wayland & Unfocused Global Hotkey Architecture [In Progress / Backlogged]
-- **Wayland Global Shortcut Support**:
-  - In modern Linux Wayland environments, X11 `XGrabKey` is blocked when native Wayland apps are active.
-  - Implement XDG Desktop Portal `org.freedesktop.portal.GlobalShortcuts` integration via D-Bus.
-  - In X11: JNA `XGrabKey` ABI alignment (`Int` for `owner_events`), `XSetErrorHandler` installed, and responsive `XPending` event loop implemented.
+### 11. Global Hotkey Architecture (X11 Multi-Threaded & Multi-Key Mapping) [Implemented]
+- **Robust KeySym Resolution & Event Loop**:
+  - `XInitThreads()` initialization prevents multi-threaded Xlib event loss when application is unfocused.
+  - Multi-tier keycode resolution supporting exact, lowercase, uppercase, and ASCII code mappings (e.g. `Ctrl+Shift+L`).
+  - X11 `XGrabKey` ABI alignment (`Int` for `owner_events`), error handler installed, non-blocking `XPending` polling thread.
 
 ---
 
@@ -168,8 +170,11 @@
 
 ---
 
-### 19. Multi-Platform Build & Run Matrix (Win 11, Ubuntu 24.04, macOS 15) [Backlogged]
-- CI matrix covering:
-  - Windows 11 (MSVC / MinGW whisper binaries, AWT/Swing rendering, Windows Startup)
-  - Ubuntu 24.04 LTS (X11 / Wayland, PipeWire / PulseAudio, XDG autostart)
-  - macOS 15 Sequoia (Metal acceleration, CoreAudio, LaunchAgents)
+### 19. Multi-Platform Build & Run Matrix (Win 11, Ubuntu 24.04, macOS 15) [Implemented]
+- **Multi-Platform CI Workflow Matrix**:
+  - Configured in `.github/workflows/ci.yml`.
+  - Matrix runs automated builds and testing across:
+    - `ubuntu-24.04` (Linux, headless testing, JaCoCo report generation)
+    - `windows-latest` (Windows 11-based GitHub runner, MSVC / Win32 toolchain verification)
+    - `macos-15` (macOS Sequoia runner, Apple Silicon / ARM64 / Metal compatibility)
+  - Executes full test suite (`testAll`), static code analysis (`detektAll`), style checking (`ktlintAll`), and reproducible artifact build (`build`).

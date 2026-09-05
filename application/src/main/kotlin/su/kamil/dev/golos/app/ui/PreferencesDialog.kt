@@ -43,6 +43,7 @@ class PreferencesDialog(
     private val autoStartManager: AutoStartManager = AutoStartManager(),
 ) : JFrame("GolosAI - Speech to Text Assistant") {
     private val statusLabel = JLabel("Status: IDLE", SwingConstants.CENTER)
+    private val audioProviderCombo = JComboBox(arrayOf("JavaSound (Standard Cross-Platform)", "PortAudio (Alternative Native)"))
     private val micCombo = JComboBox<String>()
     private val engineCombo = JComboBox<String>()
     private val pttButton = JButton("🎙️ Hold to Speak (Push to Talk)")
@@ -255,10 +256,31 @@ class PreferencesDialog(
                 weightx = 0.3
             }
 
-        // 1. Microphone Device Selection
-        panel.add(JLabel("Microphone Input:"), gbc)
+        // 1. Audio Provider Selection
+        panel.add(JLabel("Audio Provider:"), gbc)
         gbc.gridx = 1
         gbc.weightx = 0.7
+        audioProviderCombo.addActionListener {
+            val isPortAudio = audioProviderCombo.selectedIndex == 1
+            orchestrator.audioCapture =
+                if (isPortAudio) {
+                    su.kamil.dev.golos.system.audio.PortAudioAudioCapture()
+                } else {
+                    su.kamil.dev.golos.system.audio.JavaSoundAudioCapture()
+                }
+            refreshMicrophoneList()
+            saveCurrentConfig()
+        }
+        panel.add(audioProviderCombo, gbc)
+
+        // 2. Microphone / Output Monitor Device Selection
+        gbc.gridx = 0
+        gbc.gridy = 1
+        gbc.weightx = 0.3
+        panel.add(JLabel("Audio Input / Monitor:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        val micPanel = JPanel(BorderLayout(0, 4))
         refreshMicrophoneList()
         micCombo.addActionListener {
             val idx = micCombo.selectedIndex
@@ -267,11 +289,16 @@ class PreferencesDialog(
                 saveCurrentConfig()
             }
         }
-        panel.add(micCombo, gbc)
+        micPanel.add(micCombo, BorderLayout.NORTH)
+        val clueLabel = JLabel("💡 Tip: Select 🎙️ [Microphone] for voice, or 🎧 [System Output Monitor] for desktop audio/calls.")
+        clueLabel.font = Font(Font.SANS_SERIF, Font.ITALIC, 11)
+        clueLabel.foreground = Color(100, 100, 100)
+        micPanel.add(clueLabel, BorderLayout.SOUTH)
+        panel.add(micPanel, gbc)
 
-        // 2. Speech-to-Text Engine Selection
+        // 3. Speech-to-Text Engine Selection
         gbc.gridx = 0
-        gbc.gridy = 1
+        gbc.gridy = 2
         gbc.weightx = 0.3
         panel.add(JLabel("Processing Engine:"), gbc)
         gbc.gridx = 1
@@ -286,9 +313,9 @@ class PreferencesDialog(
         }
         panel.add(engineCombo, gbc)
 
-        // 3. Active Hotkey Info
+        // 4. Active Hotkey Info
         gbc.gridx = 0
-        gbc.gridy = 2
+        gbc.gridy = 3
         gbc.weightx = 0.3
         panel.add(JLabel("Active Shortcut:"), gbc)
         gbc.gridx = 1
@@ -297,9 +324,9 @@ class PreferencesDialog(
         activeHotkeyLabel.foreground = Color(0, 102, 204)
         panel.add(activeHotkeyLabel, gbc)
 
-        // 4. Change Hotkey Configuration
+        // 5. Change Hotkey Configuration
         gbc.gridx = 0
-        gbc.gridy = 3
+        gbc.gridy = 4
         gbc.weightx = 0.3
         panel.add(JLabel("Change Shortcut:"), gbc)
         gbc.gridx = 1
@@ -961,6 +988,24 @@ class PreferencesDialog(
         copyClipboardCheck.isSelected = ins.copyToClipboard
         fallbackClipboardCheck.isSelected = ins.copyToClipboardIfNoField
 
+        // Audio Provider & Device
+        val isPortAudio = c.audio.provider.equals("PortAudio", ignoreCase = true)
+        audioProviderCombo.selectedIndex = if (isPortAudio) 1 else 0
+        orchestrator.audioCapture =
+            if (isPortAudio) {
+                su.kamil.dev.golos.system.audio.PortAudioAudioCapture()
+            } else {
+                su.kamil.dev.golos.system.audio.JavaSoundAudioCapture()
+            }
+        refreshMicrophoneList()
+        if (c.audio.deviceName.isNotEmpty()) {
+            val devIdx = availableDevices.indexOfFirst { it.id == c.audio.deviceName || it.name == c.audio.deviceName }
+            if (devIdx != -1) {
+                micCombo.selectedIndex = devIdx
+                orchestrator.selectedDevice = availableDevices[devIdx]
+            }
+        }
+
         // Autostart
         autostartCheck.isSelected = c.autostart.enabled
         autoStartManager.setAutoStart(c.autostart.enabled)
@@ -991,6 +1036,7 @@ class PreferencesDialog(
         val hk = orchestrator.currentHotkey
         val ins = orchestrator.injectionConfig
         val selectedEngineId = if (orchestrator.speechEngine is WhisperCppEngine) "whisper-cpp" else "mock"
+        val isPortAudio = audioProviderCombo.selectedIndex == 1
 
         val config =
             GolosConfig(
@@ -1000,7 +1046,7 @@ class PreferencesDialog(
                 audio =
                     AudioSettings(
                         deviceName = orchestrator.selectedDevice?.id ?: "",
-                        provider = "JavaSound",
+                        provider = if (isPortAudio) "PortAudio" else "JavaSound",
                     ),
                 engine =
                     EngineSettings(
@@ -1058,10 +1104,11 @@ class PreferencesDialog(
     private fun promptAndTranscribeAudioFile() {
         val chooser = JFileChooser()
         chooser.dialogTitle = "Select Audio File for Speech Recognition"
-        chooser.fileFilter = FileNameExtensionFilter(
-            "Audio Files (*.wav, *.mp3, *.flac, *.ogg, *.m4a)",
-            "wav", "mp3", "flac", "ogg", "m4a",
-        )
+        chooser.fileFilter =
+            FileNameExtensionFilter(
+                "Audio Files (*.wav, *.mp3, *.flac, *.ogg, *.m4a)",
+                "wav", "mp3", "flac", "ogg", "m4a",
+            )
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             val audioFile = chooser.selectedFile
             statusLabel.text = "Status: ⏳ Transcribing file '${audioFile.name}'..."
@@ -1084,7 +1131,10 @@ class PreferencesDialog(
         }
     }
 
-    private fun showFileTranscriptionResult(file: File, result: TranscriptionResult) {
+    private fun showFileTranscriptionResult(
+        file: File,
+        result: TranscriptionResult,
+    ) {
         val dialog = JDialog(this, "Transcription Result - ${file.name}", true)
         dialog.setSize(540, 400)
         dialog.setLocationRelativeTo(this)
@@ -1092,9 +1142,10 @@ class PreferencesDialog(
 
         val header = JPanel(BorderLayout(4, 4))
         header.border = EmptyBorder(12, 14, 4, 14)
-        val infoLabel = JLabel(
-            "<html><b>File:</b> ${file.name}<br/><b>Duration:</b> ${result.durationMs} ms | <b>Engine:</b> ${orchestrator.speechEngine.displayName}</html>"
-        )
+        val infoLabel =
+            JLabel(
+                "<html><b>File:</b> ${file.name}<br/><b>Duration:</b> ${result.durationMs} ms | <b>Engine:</b> ${orchestrator.speechEngine.displayName}</html>",
+            )
         header.add(infoLabel, BorderLayout.CENTER)
         dialog.add(header, BorderLayout.NORTH)
 

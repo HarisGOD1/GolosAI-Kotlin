@@ -11,5 +11,5 @@ data class HistoryEntry(
     val text: String,
     val durationMs: Long = 0,
     val engine: String = "",
-    val language: String = ""
+    val language: String = "",
 )

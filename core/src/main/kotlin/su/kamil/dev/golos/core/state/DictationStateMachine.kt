@@ -19,44 +19,48 @@ class DictationStateMachine {
      * Transition from IDLE to RECORDING when push-to-talk key is depressed.
      * Returns true if transition succeeded, false if invalid state.
      */
-    fun startRecording(): Boolean = lock.withLock {
-        if (_state.value == DictationState.IDLE) {
-            _state.value = DictationState.RECORDING
-            true
-        } else {
-            false
+    fun startRecording(): Boolean =
+        lock.withLock {
+            if (_state.value == DictationState.IDLE) {
+                _state.value = DictationState.RECORDING
+                true
+            } else {
+                false
+            }
         }
-    }
 
     /**
      * Transition from RECORDING to PROCESSING when push-to-talk key is released.
      * Returns true if transition succeeded, false if invalid state.
      */
-    fun startProcessing(): Boolean = lock.withLock {
-        if (_state.value == DictationState.RECORDING) {
-            _state.value = DictationState.PROCESSING
-            true
-        } else {
-            false
+    fun startProcessing(): Boolean =
+        lock.withLock {
+            if (_state.value == DictationState.RECORDING) {
+                _state.value = DictationState.PROCESSING
+                true
+            } else {
+                false
+            }
         }
-    }
 
     /**
      * Transition from PROCESSING to IDLE once transcription and injection are done.
      */
-    fun finishProcessing(): Boolean = lock.withLock {
-        if (_state.value == DictationState.PROCESSING) {
-            _state.value = DictationState.IDLE
-            true
-        } else {
-            false
+    fun finishProcessing(): Boolean =
+        lock.withLock {
+            if (_state.value == DictationState.PROCESSING) {
+                _state.value = DictationState.IDLE
+                true
+            } else {
+                false
+            }
         }
-    }
 
     /**
      * Reset state directly to IDLE (e.g., error recovery or user cancellation).
      */
-    fun reset(): Unit = lock.withLock {
-        _state.value = DictationState.IDLE
-    }
+    fun reset(): Unit =
+        lock.withLock {
+            _state.value = DictationState.IDLE
+        }
 }

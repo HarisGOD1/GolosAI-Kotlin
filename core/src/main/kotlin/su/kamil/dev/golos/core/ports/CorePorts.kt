@@ -11,8 +11,14 @@ import su.kamil.dev.golos.core.model.TranscriptionResult
  */
 interface AudioCapturePort {
     fun getAvailableDevices(): List<AudioDevice>
-    fun startCapture(device: AudioDevice?, onChunkCaptured: (AudioChunk) -> Unit)
+
+    fun startCapture(
+        device: AudioDevice?,
+        onChunkCaptured: (AudioChunk) -> Unit,
+    )
+
     fun stopCapture(): AudioChunk?
+
     fun isCapturing(): Boolean
 }
 
@@ -24,10 +30,13 @@ interface SpeechToTextEngine {
     val displayName: String
 
     suspend fun initialize(): Result<Unit> = Result.success(Unit)
+
     suspend fun transcribe(audio: AudioChunk): TranscriptionResult
+
     suspend fun transcribeFile(file: java.io.File): TranscriptionResult {
         return transcribe(AudioChunk(file.readBytes()))
     }
+
     fun close() {}
 }
 
@@ -38,10 +47,11 @@ interface GlobalHotkeyHook {
     fun register(
         config: HotkeyConfig,
         onKeyDown: () -> Unit,
-        onKeyUp: () -> Unit
+        onKeyUp: () -> Unit,
     ): Result<Unit>
 
     fun unregister()
+
     val isRegistered: Boolean
 }
 
@@ -50,5 +60,9 @@ interface GlobalHotkeyHook {
  */
 interface TextInjectorPort {
     fun initialize(): Result<Unit> = Result.success(Unit)
-    fun injectText(text: String, config: InjectionConfig = InjectionConfig()): Result<Unit>
+
+    fun injectText(
+        text: String,
+        config: InjectionConfig = InjectionConfig(),
+    ): Result<Unit>
 }

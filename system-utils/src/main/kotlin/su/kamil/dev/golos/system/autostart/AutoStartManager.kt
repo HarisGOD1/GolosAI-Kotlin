@@ -29,49 +29,51 @@ class AutoStartManager {
         }
     }
 
-    fun setAutoStart(enabled: Boolean): Result<Unit> = runCatching {
-        if (isLinux) {
-            val desktopFile = linuxDesktopFile
-            if (enabled) {
-                desktopFile.parentFile.mkdirs()
-                val javaBin = System.getProperty("java.home") + "/bin/java"
-                val appJar = resolveAppLauncher()
+    fun setAutoStart(enabled: Boolean): Result<Unit> =
+        runCatching {
+            if (isLinux) {
+                val desktopFile = linuxDesktopFile
+                if (enabled) {
+                    desktopFile.parentFile.mkdirs()
+                    val javaBin = System.getProperty("java.home") + "/bin/java"
+                    val appJar = resolveAppLauncher()
 
-                val content = """
-                    [Desktop Entry]
-                    Type=Application
-                    Name=GolosAI
-                    Comment=Local Speech-to-Text Dictation Assistant
-                    Exec=$javaBin -jar $appJar
-                    Terminal=false
-                    Categories=Utility;Audio;
-                    X-GNOME-Autostart-enabled=true
-                """.trimIndent()
+                    val content =
+                        """
+                        [Desktop Entry]
+                        Type=Application
+                        Name=GolosAI
+                        Comment=Local Speech-to-Text Dictation Assistant
+                        Exec=$javaBin -jar $appJar
+                        Terminal=false
+                        Categories=Utility;Audio;
+                        X-GNOME-Autostart-enabled=true
+                        """.trimIndent()
 
-                desktopFile.writeText(content)
-                logger.info("Enabled Linux autostart desktop file at: {}", desktopFile.absolutePath)
-            } else {
-                if (desktopFile.exists()) {
-                    desktopFile.delete()
-                    logger.info("Disabled Linux autostart by removing: {}", desktopFile.absolutePath)
+                    desktopFile.writeText(content)
+                    logger.info("Enabled Linux autostart desktop file at: {}", desktopFile.absolutePath)
+                } else {
+                    if (desktopFile.exists()) {
+                        desktopFile.delete()
+                        logger.info("Disabled Linux autostart by removing: {}", desktopFile.absolutePath)
+                    }
                 }
-            }
-        } else if (isWindows) {
-            val startupFile = windowsStartupFile
-            if (enabled) {
-                startupFile.parentFile.mkdirs()
-                val javaBin = System.getProperty("java.home") + "\\bin\\javaw.exe"
-                val appJar = resolveAppLauncher()
-                startupFile.writeText("start \"\" \"$javaBin\" -jar \"$appJar\"\n")
-                logger.info("Enabled Windows autostart script at: {}", startupFile.absolutePath)
-            } else {
-                if (startupFile.exists()) {
-                    startupFile.delete()
-                    logger.info("Disabled Windows autostart by removing: {}", startupFile.absolutePath)
+            } else if (isWindows) {
+                val startupFile = windowsStartupFile
+                if (enabled) {
+                    startupFile.parentFile.mkdirs()
+                    val javaBin = System.getProperty("java.home") + "\\bin\\javaw.exe"
+                    val appJar = resolveAppLauncher()
+                    startupFile.writeText("start \"\" \"$javaBin\" -jar \"$appJar\"\n")
+                    logger.info("Enabled Windows autostart script at: {}", startupFile.absolutePath)
+                } else {
+                    if (startupFile.exists()) {
+                        startupFile.delete()
+                        logger.info("Disabled Windows autostart by removing: {}", startupFile.absolutePath)
+                    }
                 }
             }
         }
-    }
 
     private fun resolveAppLauncher(): String {
         return try {

@@ -8,16 +8,16 @@ data class AudioChunk(
     val sampleRate: Int = 16000,
     val channels: Int = 1,
     val bitsPerSample: Int = 16,
-    val timestampMs: Long = System.currentTimeMillis()
+    val timestampMs: Long = System.currentTimeMillis(),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
         other as AudioChunk
         return samples.contentEquals(other.samples) &&
-                sampleRate == other.sampleRate &&
-                channels == other.channels &&
-                bitsPerSample == other.bitsPerSample
+            sampleRate == other.sampleRate &&
+            channels == other.channels &&
+            bitsPerSample == other.bitsPerSample
     }
 
     override fun hashCode(): Int {

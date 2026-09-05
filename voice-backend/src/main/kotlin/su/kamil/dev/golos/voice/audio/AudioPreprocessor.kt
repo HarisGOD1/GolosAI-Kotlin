@@ -14,7 +14,6 @@ import kotlin.math.sqrt
  * - WAV header packaging
  */
 object AudioPreprocessor {
-
     const val TARGET_SAMPLE_RATE = 16000
     const val TARGET_CHANNELS = 1
     const val TARGET_BITS_PER_SAMPLE = 16
@@ -34,11 +33,12 @@ object AudioPreprocessor {
         val monoFloats = decodeToMonoFloats(chunk)
 
         // Step 2: Resample to 16000 Hz using linear interpolation
-        val resampledFloats = if (chunk.sampleRate != TARGET_SAMPLE_RATE) {
-            resampleLinear(monoFloats, chunk.sampleRate, TARGET_SAMPLE_RATE)
-        } else {
-            monoFloats
-        }
+        val resampledFloats =
+            if (chunk.sampleRate != TARGET_SAMPLE_RATE) {
+                resampleLinear(monoFloats, chunk.sampleRate, TARGET_SAMPLE_RATE)
+            } else {
+                monoFloats
+            }
 
         // Step 3: Encode back to 16-bit little-endian PCM
         val pcmBytes = encodeFloatsTo16BitPcm(resampledFloats)
@@ -48,7 +48,7 @@ object AudioPreprocessor {
             sampleRate = TARGET_SAMPLE_RATE,
             channels = TARGET_CHANNELS,
             bitsPerSample = TARGET_BITS_PER_SAMPLE,
-            timestampMs = chunk.timestampMs
+            timestampMs = chunk.timestampMs,
         )
     }
 
@@ -69,7 +69,10 @@ object AudioPreprocessor {
     /**
      * Checks if the chunk contains audible speech based on RMS threshold.
      */
-    fun isAudible(chunk: AudioChunk, threshold: Float = 0.01f): Boolean {
+    fun isAudible(
+        chunk: AudioChunk,
+        threshold: Float = 0.01f,
+    ): Boolean {
         return calculateRms(chunk) >= threshold
     }
 
@@ -118,13 +121,14 @@ object AudioPreprocessor {
             var channelSum = 0f
             for (ch in 0 until chunk.channels) {
                 val index = (i * chunk.channels + ch) * bytesPerSample
-                val sampleValue = if (chunk.bitsPerSample == 16) {
-                    val low = bytes[index].toInt() and 0xFF
-                    val high = bytes[index + 1].toInt()
-                    ((high shl 8) or low) / 32768.0f
-                } else {
-                    0f
-                }
+                val sampleValue =
+                    if (chunk.bitsPerSample == 16) {
+                        val low = bytes[index].toInt() and 0xFF
+                        val high = bytes[index + 1].toInt()
+                        ((high shl 8) or low) / 32768.0f
+                    } else {
+                        0f
+                    }
                 channelSum += sampleValue
             }
             mono[i] = channelSum / chunk.channels
@@ -132,7 +136,11 @@ object AudioPreprocessor {
         return mono
     }
 
-    private fun resampleLinear(input: FloatArray, srcRate: Int, dstRate: Int): FloatArray {
+    private fun resampleLinear(
+        input: FloatArray,
+        srcRate: Int,
+        dstRate: Int,
+    ): FloatArray {
         if (srcRate == dstRate || input.isEmpty()) return input
         val ratio = srcRate.toDouble() / dstRate.toDouble()
         val dstLength = (input.size / ratio).toInt()
@@ -159,15 +167,17 @@ object AudioPreprocessor {
         return bytes
     }
 
-    private fun intToByteArray(v: Int): ByteArray = byteArrayOf(
-        (v and 0xFF).toByte(),
-        ((v ushr 8) and 0xFF).toByte(),
-        ((v ushr 16) and 0xFF).toByte(),
-        ((v ushr 24) and 0xFF).toByte()
-    )
+    private fun intToByteArray(v: Int): ByteArray =
+        byteArrayOf(
+            (v and 0xFF).toByte(),
+            ((v ushr 8) and 0xFF).toByte(),
+            ((v ushr 16) and 0xFF).toByte(),
+            ((v ushr 24) and 0xFF).toByte(),
+        )
 
-    private fun shortToByteArray(v: Short): ByteArray = byteArrayOf(
-        (v.toInt() and 0xFF).toByte(),
-        ((v.toInt() ushr 8) and 0xFF).toByte()
-    )
+    private fun shortToByteArray(v: Short): ByteArray =
+        byteArrayOf(
+            (v.toInt() and 0xFF).toByte(),
+            ((v.toInt() ushr 8) and 0xFF).toByte(),
+        )
 }

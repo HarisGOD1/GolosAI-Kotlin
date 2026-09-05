@@ -6,7 +6,6 @@ import su.kamil.dev.golos.core.model.AudioChunk
 import su.kamil.dev.golos.core.model.DictationState
 
 class DictationStateMachineTest {
-
     @Test
     fun `test valid state progression cycle`() {
         val sm = DictationStateMachine()
@@ -52,11 +51,15 @@ class DictationStateMachineTest {
     @Test
     fun `test audio chunk float conversion`() {
         // 16-bit PCM little-endian: 0, 32767 (~1.0), -32768 (-1.0)
-        val pcm = byteArrayOf(
-            0x00, 0x00,               // 0
-            0xFF.toByte(), 0x7F,      // 32767
-            0x00, 0x80.toByte()       // -32768
-        )
+        val pcm =
+            byteArrayOf(
+                0x00,
+                0x00, // 0
+                0xFF.toByte(),
+                0x7F, // 32767
+                0x00,
+                0x80.toByte(), // -32768
+            )
         val chunk = AudioChunk(pcm, sampleRate = 16000, channels = 1, bitsPerSample = 16)
         val floats = chunk.toNormalizedFloatArray()
 

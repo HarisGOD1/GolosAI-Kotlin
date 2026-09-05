@@ -13,9 +13,8 @@ class MockSpeechToTextEngine(
     override val id: String = "mock-engine",
     override val displayName: String = "Mock Speech Engine (Simulated)",
     private val simulatedDelayMs: Long = 100,
-    var predeterminedText: String? = null
+    var predeterminedText: String? = null,
 ) : SpeechToTextEngine {
-
     override suspend fun transcribe(audio: AudioChunk): TranscriptionResult {
         if (simulatedDelayMs > 0) {
             delay(simulatedDelayMs)
@@ -26,7 +25,7 @@ class MockSpeechToTextEngine(
             return TranscriptionResult(
                 text = "",
                 durationMs = simulatedDelayMs,
-                confidence = 0.0f
+                confidence = 0.0f,
             )
         }
 
@@ -34,7 +33,7 @@ class MockSpeechToTextEngine(
         return TranscriptionResult(
             text = text,
             durationMs = simulatedDelayMs,
-            confidence = 0.98f
+            confidence = 0.98f,
         )
     }
 
@@ -46,7 +45,7 @@ class MockSpeechToTextEngine(
         return TranscriptionResult(
             text = text,
             durationMs = simulatedDelayMs,
-            confidence = 0.98f
+            confidence = 0.98f,
         )
     }
 }

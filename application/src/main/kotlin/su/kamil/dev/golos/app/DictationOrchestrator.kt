@@ -22,7 +22,7 @@ import su.kamil.dev.golos.core.state.DictationStateMachine
  */
 class DictationOrchestrator(
     val stateMachine: DictationStateMachine,
-    val audioCapture: AudioCapturePort,
+    var audioCapture: AudioCapturePort,
     var speechEngine: SpeechToTextEngine,
     val hotkeyHook: GlobalHotkeyHook,
     val textInjector: TextInjectorPort,
@@ -107,9 +107,10 @@ class DictationOrchestrator(
                 }
 
                 if (injectionConfig.timing == su.kamil.dev.golos.core.model.InjectionTiming.ON_THE_FLY) {
-                    streamingJob = scope.launch {
-                        startLiveStreamingLoop()
-                    }
+                    streamingJob =
+                        scope.launch {
+                            startLiveStreamingLoop()
+                        }
                 }
             } catch (e: Exception) {
                 logger.error("Failed to start audio capture", e)
@@ -123,21 +124,23 @@ class DictationOrchestrator(
             kotlinx.coroutines.delay(800)
             if (stateMachine.state.value != DictationState.RECORDING) break
 
-            val currentBytes = synchronized(liveAudioStream) {
-                if (liveAudioStream.size() >= 16000 * 2) {
-                    liveAudioStream.toByteArray()
-                } else {
-                    null
-                }
-            } ?: continue
+            val currentBytes =
+                synchronized(liveAudioStream) {
+                    if (liveAudioStream.size() >= 16000 * 2) {
+                        liveAudioStream.toByteArray()
+                    } else {
+                        null
+                    }
+                } ?: continue
 
             try {
-                val partialChunk = su.kamil.dev.golos.core.model.AudioChunk(
-                    samples = currentBytes,
-                    sampleRate = 16000,
-                    channels = 1,
-                    bitsPerSample = 16,
-                )
+                val partialChunk =
+                    su.kamil.dev.golos.core.model.AudioChunk(
+                        samples = currentBytes,
+                        sampleRate = 16000,
+                        channels = 1,
+                        bitsPerSample = 16,
+                    )
                 val partial = speechEngine.transcribe(partialChunk)
                 val newWords = partial.text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
 
@@ -193,14 +196,15 @@ class DictationOrchestrator(
                             onTranscriptionCompleted?.invoke(result, speechEngine)
                             if (injectionConfig.timing == su.kamil.dev.golos.core.model.InjectionTiming.ON_THE_FLY) {
                                 val finalWords = result.text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
-                                val deltaText = synchronized(committedWords) {
-                                    if (finalWords.size > committedWords.size) {
-                                        val deltaList = finalWords.subList(committedWords.size, finalWords.size)
-                                        (if (committedWords.isNotEmpty()) " " else "") + deltaList.joinToString(" ")
-                                    } else {
-                                        ""
+                                val deltaText =
+                                    synchronized(committedWords) {
+                                        if (finalWords.size > committedWords.size) {
+                                            val deltaList = finalWords.subList(committedWords.size, finalWords.size)
+                                            (if (committedWords.isNotEmpty()) " " else "") + deltaList.joinToString(" ")
+                                        } else {
+                                            ""
+                                        }
                                     }
-                                }
                                 if (deltaText.isNotEmpty()) {
                                     textInjector.injectText(deltaText, injectionConfig)
                                 }

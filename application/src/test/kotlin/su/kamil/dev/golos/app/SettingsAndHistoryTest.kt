@@ -77,12 +77,14 @@ class SettingsAndHistoryTest {
     @Test
     fun `SettingsManager preserves on the fly timing configuration`() {
         val manager = SettingsManager(tempConfigFile)
-        val config = GolosConfig(
-            insertion = InsertionSettings(
-                mode = "DIRECT_TYPING",
-                timing = "ON_THE_FLY"
+        val config =
+            GolosConfig(
+                insertion =
+                    InsertionSettings(
+                        mode = "DIRECT_TYPING",
+                        timing = "ON_THE_FLY",
+                    ),
             )
-        )
         manager.save(config)
 
         val reloaded = manager.load()

@@ -3,14 +3,15 @@ package su.kamil.dev.golos.core.model
 data class AudioDevice(
     val id: String,
     val name: String,
-    val isDefault: Boolean = false
+    val isDefault: Boolean = false,
+    val isLoopbackMonitor: Boolean = false,
 )
 
 data class TranscriptionResult(
     val text: String,
     val durationMs: Long = 0,
     val isFinal: Boolean = true,
-    val confidence: Float = 1.0f
+    val confidence: Float = 1.0f,
 )
 
 data class HotkeyConfig(
@@ -19,16 +20,17 @@ data class HotkeyConfig(
     val shift: Boolean = false,
     val alt: Boolean = false,
     val meta: Boolean = false,
-    val keyCode: Int = 0
+    val keyCode: Int = 0,
 ) {
     val displayText: String
-        get() = buildString {
-            if (ctrl) append("Ctrl+")
-            if (alt) append("Alt+")
-            if (shift) append("Shift+")
-            if (meta) append("Meta+")
-            append(keyName)
-        }
+        get() =
+            buildString {
+                if (ctrl) append("Ctrl+")
+                if (alt) append("Alt+")
+                if (shift) append("Shift+")
+                if (meta) append("Meta+")
+                append(keyName)
+            }
 
     companion object {
         val DEFAULT = HotkeyConfig(keyName = "F8")
@@ -55,7 +57,7 @@ data class HotkeyConfig(
                 ctrl = ctrl,
                 shift = shift,
                 alt = alt,
-                meta = meta
+                meta = meta,
             )
         }
     }
@@ -66,7 +68,7 @@ enum class InsertionMode {
     DIRECT_TYPING,
 
     /** Pastes text via system clipboard (Ctrl+V) */
-    CLIPBOARD_PASTE
+    CLIPBOARD_PASTE,
 }
 
 enum class InjectionTiming {
@@ -74,12 +76,12 @@ enum class InjectionTiming {
     ON_KEY_RELEASE,
 
     /** Streams and types words incrementally on the fly into the active text field while speaking. */
-    ON_THE_FLY
+    ON_THE_FLY,
 }
 
 data class InjectionConfig(
     val mode: InsertionMode = InsertionMode.DIRECT_TYPING,
     val timing: InjectionTiming = InjectionTiming.ON_KEY_RELEASE,
     val copyToClipboard: Boolean = false, // Disabled by default for privacy
-    val copyToClipboardIfNoField: Boolean = true // Fallback to clipboard if active input is missing
+    val copyToClipboardIfNoField: Boolean = true, // Fallback to clipboard if active input is missing
 )

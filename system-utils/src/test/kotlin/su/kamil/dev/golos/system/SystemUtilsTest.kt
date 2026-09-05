@@ -10,7 +10,6 @@ import su.kamil.dev.golos.system.input.ActiveWindowTextInjector
 import su.kamil.dev.golos.system.keyboard.SimulatedHotkeyHook
 
 class SystemUtilsTest {
-
     @Test
     fun `test simulated hotkey hook triggers callbacks`() {
         val hook = SimulatedHotkeyHook()
@@ -20,7 +19,7 @@ class SystemUtilsTest {
         hook.register(
             HotkeyConfig(keyName = "F8"),
             onKeyDown = { downCount++ },
-            onKeyUp = { upCount++ }
+            onKeyUp = { upCount++ },
         )
 
         assertTrue(hook.isRegistered)
@@ -40,11 +39,25 @@ class SystemUtilsTest {
     }
 
     @Test
-    fun `test java sound audio capture device querying`() {
+    fun `test java sound audio capture device querying and loopback detection`() {
         val capture = JavaSoundAudioCapture()
         val devices = capture.getAvailableDevices()
         assertNotNull(devices)
+        assertTrue(devices.isNotEmpty())
         assertFalse(capture.isCapturing())
+        // Verify loopback monitor exists or is flagged properly
+        assertTrue(devices.any { it.isLoopbackMonitor })
+    }
+
+    @Test
+    fun `test portaudio audio capture device querying`() {
+        val paCapture = su.kamil.dev.golos.system.audio.PortAudioAudioCapture()
+        val devices = paCapture.getAvailableDevices()
+        assertNotNull(devices)
+        assertTrue(devices.isNotEmpty())
+        // Every device returned by PortAudio provider must be tagged with pa: id
+        assertTrue(devices.all { it.id.startsWith("pa:") })
+        assertFalse(paCapture.isCapturing())
     }
 
     @Test
@@ -72,10 +85,11 @@ class SystemUtilsTest {
     @Test
     fun `test text injector handles text with punctuation and whitespace`() {
         val injector = ActiveWindowTextInjector(pasteDelayMs = 10)
-        val res = injector.injectText(
-            "Hello, world! Direct typing & test: 123.",
-            InjectionConfig(mode = InsertionMode.DIRECT_TYPING, copyToClipboard = false)
-        )
+        val res =
+            injector.injectText(
+                "Hello, world! Direct typing & test: 123.",
+                InjectionConfig(mode = InsertionMode.DIRECT_TYPING, copyToClipboard = false),
+            )
         assertTrue(res.isSuccess)
     }
 }

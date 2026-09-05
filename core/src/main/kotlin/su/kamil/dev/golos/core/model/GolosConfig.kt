@@ -10,26 +10,28 @@ data class HotkeySettings(
     val shift: Boolean = false,
     val alt: Boolean = false,
     val meta: Boolean = false,
-    val keyCode: Int = 119
+    val keyCode: Int = 119,
 ) {
-    fun toHotkeyConfig(): HotkeyConfig = HotkeyConfig(
-        keyName = keyName,
-        ctrl = ctrl,
-        shift = shift,
-        alt = alt,
-        meta = meta,
-        keyCode = keyCode
-    )
+    fun toHotkeyConfig(): HotkeyConfig =
+        HotkeyConfig(
+            keyName = keyName,
+            ctrl = ctrl,
+            shift = shift,
+            alt = alt,
+            meta = meta,
+            keyCode = keyCode,
+        )
 
     companion object {
-        fun from(c: HotkeyConfig) = HotkeySettings(
-            keyName = c.keyName,
-            ctrl = c.ctrl,
-            shift = c.shift,
-            alt = c.alt,
-            meta = c.meta,
-            keyCode = c.keyCode
-        )
+        fun from(c: HotkeyConfig) =
+            HotkeySettings(
+                keyName = c.keyName,
+                ctrl = c.ctrl,
+                shift = c.shift,
+                alt = c.alt,
+                meta = c.meta,
+                keyCode = c.keyCode,
+            )
     }
 }
 
@@ -37,28 +39,30 @@ data class InsertionSettings(
     val mode: String = "DIRECT_TYPING",
     val timing: String = "ON_KEY_RELEASE",
     val copyToClipboard: Boolean = false,
-    val copyToClipboardIfNoField: Boolean = true
+    val copyToClipboardIfNoField: Boolean = true,
 ) {
-    fun toInjectionConfig(): InjectionConfig = InjectionConfig(
-        mode = runCatching { InsertionMode.valueOf(mode) }.getOrDefault(InsertionMode.DIRECT_TYPING),
-        timing = runCatching { InjectionTiming.valueOf(timing) }.getOrDefault(InjectionTiming.ON_KEY_RELEASE),
-        copyToClipboard = copyToClipboard,
-        copyToClipboardIfNoField = copyToClipboardIfNoField
-    )
+    fun toInjectionConfig(): InjectionConfig =
+        InjectionConfig(
+            mode = runCatching { InsertionMode.valueOf(mode) }.getOrDefault(InsertionMode.DIRECT_TYPING),
+            timing = runCatching { InjectionTiming.valueOf(timing) }.getOrDefault(InjectionTiming.ON_KEY_RELEASE),
+            copyToClipboard = copyToClipboard,
+            copyToClipboardIfNoField = copyToClipboardIfNoField,
+        )
 
     companion object {
-        fun from(c: InjectionConfig) = InsertionSettings(
-            mode = c.mode.name,
-            timing = c.timing.name,
-            copyToClipboard = c.copyToClipboard,
-            copyToClipboardIfNoField = c.copyToClipboardIfNoField
-        )
+        fun from(c: InjectionConfig) =
+            InsertionSettings(
+                mode = c.mode.name,
+                timing = c.timing.name,
+                copyToClipboard = c.copyToClipboard,
+                copyToClipboardIfNoField = c.copyToClipboardIfNoField,
+            )
     }
 }
 
 data class AudioSettings(
     val deviceName: String = "",
-    val provider: String = "JavaSound"
+    val provider: String = "JavaSound",
 )
 
 data class WhisperSettings(
@@ -67,16 +71,16 @@ data class WhisperSettings(
     val modelName: String = "base",
     val language: String = "auto",
     val device: String = "CPU",
-    val threads: Int = 4
+    val threads: Int = 4,
 )
 
 data class EngineSettings(
     val selectedId: String = "mock",
-    val whisper: WhisperSettings = WhisperSettings()
+    val whisper: WhisperSettings = WhisperSettings(),
 )
 
 data class AutostartSettings(
-    val enabled: Boolean = false
+    val enabled: Boolean = false,
 )
 
 data class GolosConfig(
@@ -85,5 +89,5 @@ data class GolosConfig(
     val insertion: InsertionSettings = InsertionSettings(),
     val audio: AudioSettings = AudioSettings(),
     val engine: EngineSettings = EngineSettings(),
-    val autostart: AutostartSettings = AutostartSettings()
+    val autostart: AutostartSettings = AutostartSettings(),
 )

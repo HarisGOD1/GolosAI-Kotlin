@@ -11,5 +11,5 @@ enum class DictationState {
     RECORDING,
 
     /** Push-to-talk key released; audio is being transcribed and injected into target text field. */
-    PROCESSING
+    PROCESSING,
 }

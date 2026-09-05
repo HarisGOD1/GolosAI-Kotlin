@@ -7,7 +7,6 @@ import su.kamil.dev.golos.core.ports.GlobalHotkeyHook
  * Programmatic hotkey hook for testing and headless runs.
  */
 class SimulatedHotkeyHook : GlobalHotkeyHook {
-
     private var onKeyDownCallback: (() -> Unit)? = null
     private var onKeyUpCallback: (() -> Unit)? = null
     private var registered = false
@@ -18,7 +17,7 @@ class SimulatedHotkeyHook : GlobalHotkeyHook {
     override fun register(
         config: HotkeyConfig,
         onKeyDown: () -> Unit,
-        onKeyUp: () -> Unit
+        onKeyUp: () -> Unit,
     ): Result<Unit> {
         this.onKeyDownCallback = onKeyDown
         this.onKeyUpCallback = onKeyUp
