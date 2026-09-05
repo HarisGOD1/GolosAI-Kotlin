@@ -37,4 +37,16 @@ class MockSpeechToTextEngine(
             confidence = 0.98f
         )
     }
+
+    override suspend fun transcribeFile(file: java.io.File): TranscriptionResult {
+        if (simulatedDelayMs > 0) {
+            delay(simulatedDelayMs)
+        }
+        val text = predeterminedText ?: "Simulated transcription of audio file ${file.name}."
+        return TranscriptionResult(
+            text = text,
+            durationMs = simulatedDelayMs,
+            confidence = 0.98f
+        )
+    }
 }

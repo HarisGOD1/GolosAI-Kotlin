@@ -41,85 +41,99 @@ class WhisperCppEngine(
     }
 
     override suspend fun transcribe(audio: AudioChunk): TranscriptionResult = withContext(Dispatchers.IO) {
-        val startTime = System.currentTimeMillis()
         val standardChunk = AudioPreprocessor.toWhisperStandard(audio)
         val wavBytes = AudioPreprocessor.createWavBytes(standardChunk)
 
         val tempWav = File.createTempFile("golos_audio_", ".wav")
         try {
             tempWav.writeBytes(wavBytes)
-
-            val resolvedBin = if (File(binaryPath).canExecute()) {
-                binaryPath
-            } else {
-                val bin = su.kamil.dev.golos.voice.download.WhisperBinaryManager().ensureBinaryPresent(binaryPath)
-                this@WhisperCppEngine.binaryPath = bin
-                bin
-            }
-
-            val cmd = mutableListOf(
-                resolvedBin,
-                "-m", modelPath,
-                "-f", tempWav.absolutePath,
-                "-t", threads.toString(),
-                "-l", language,
-                "--no-timestamps",
-                "--no-prints"
-            )
-
-            if (device == InferenceDevice.CPU) {
-                cmd.add("--no-gpu")
-            }
-
-            logger.info("Executing whisper-cli (device: {}, lang: {}, model: {}): {}",
-                device, language, File(modelPath).name, cmd.joinToString(" ")
-            )
-
-            val process = try {
-                ProcessBuilder(cmd)
-                    .redirectErrorStream(false)
-                    .start()
-            } catch (e: Exception) {
-                logger.error("Failed to start whisper-cli process at path '{}'", resolvedBin, e)
-                return@withContext TranscriptionResult(
-                    text = "[Error: whisper-cli not found at '$resolvedBin'. Open Preferences -> 'Whisper Models & Hardware' and click 'Download whisper-cli' or select 'Mock Engine'.]",
-                    durationMs = System.currentTimeMillis() - startTime,
-                    isFinal = true,
-                    confidence = 0.0f
-                )
-            }
-
-            val stdoutDeferred = async(Dispatchers.IO) {
-                process.inputStream.bufferedReader().readText()
-            }
-            val stderrDeferred = async(Dispatchers.IO) {
-                process.errorStream.bufferedReader().readText()
-            }
-
-            val finished = process.waitFor(30, TimeUnit.SECONDS)
-            if (!finished) {
-                process.destroyForcibly()
-                throw IllegalStateException("Whisper process timed out after 30 seconds")
-            }
-
-            val rawOutput = stdoutDeferred.await()
-            val rawStderr = stderrDeferred.await()
-            if (rawStderr.isNotBlank()) {
-                logger.debug("whisper-cli stderr: {}", rawStderr)
-            }
-
-            val cleanedText = cleanWhisperOutput(rawOutput)
-            val duration = System.currentTimeMillis() - startTime
-
-            TranscriptionResult(
-                text = cleanedText,
-                durationMs = duration,
-                isFinal = true,
-                confidence = 0.95f
-            )
+            transcribeAudioFileInternal(tempWav)
         } finally {
             tempWav.delete()
         }
+    }
+
+    override suspend fun transcribeFile(file: File): TranscriptionResult = withContext(Dispatchers.IO) {
+        if (!file.exists()) {
+            return@withContext TranscriptionResult(
+                text = "[Error: Audio file not found at '${file.absolutePath}']",
+                durationMs = 0L,
+                confidence = 0.0f
+            )
+        }
+        transcribeAudioFileInternal(file)
+    }
+
+    private suspend fun transcribeAudioFileInternal(audioFile: File): TranscriptionResult = withContext(Dispatchers.IO) {
+        val startTime = System.currentTimeMillis()
+        val resolvedBin = if (File(binaryPath).canExecute()) {
+            binaryPath
+        } else {
+            val bin = su.kamil.dev.golos.voice.download.WhisperBinaryManager().ensureBinaryPresent(binaryPath)
+            this@WhisperCppEngine.binaryPath = bin
+            bin
+        }
+
+        val cmd = mutableListOf(
+            resolvedBin,
+            "-m", modelPath,
+            "-f", audioFile.absolutePath,
+            "-t", threads.toString(),
+            "-l", language,
+            "--no-timestamps",
+            "--no-prints"
+        )
+
+        if (device == InferenceDevice.CPU) {
+            cmd.add("--no-gpu")
+        }
+
+        logger.info("Executing whisper-cli (device: {}, lang: {}, model: {}): {}",
+            device, language, File(modelPath).name, cmd.joinToString(" ")
+        )
+
+        val process = try {
+            ProcessBuilder(cmd)
+                .redirectErrorStream(false)
+                .start()
+        } catch (e: Exception) {
+            logger.error("Failed to start whisper-cli process at path '{}'", resolvedBin, e)
+            return@withContext TranscriptionResult(
+                text = "[Error: whisper-cli not found at '$resolvedBin'. Open Preferences -> 'Whisper Models & Hardware' and click 'Download whisper-cli' or select 'Mock Engine'.]",
+                durationMs = System.currentTimeMillis() - startTime,
+                isFinal = true,
+                confidence = 0.0f
+            )
+        }
+
+        val stdoutDeferred = async(Dispatchers.IO) {
+            process.inputStream.bufferedReader().readText()
+        }
+        val stderrDeferred = async(Dispatchers.IO) {
+            process.errorStream.bufferedReader().readText()
+        }
+
+        val finished = process.waitFor(120, TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            throw IllegalStateException("Whisper process timed out after 120 seconds")
+        }
+
+        val rawOutput = stdoutDeferred.await()
+        val rawStderr = stderrDeferred.await()
+        if (rawStderr.isNotBlank()) {
+            logger.debug("whisper-cli stderr: {}", rawStderr)
+        }
+
+        val cleanedText = cleanWhisperOutput(rawOutput)
+        val duration = System.currentTimeMillis() - startTime
+
+        TranscriptionResult(
+            text = cleanedText,
+            durationMs = duration,
+            isFinal = true,
+            confidence = 0.95f
+        )
     }
 
     internal fun cleanWhisperOutput(raw: String): String {

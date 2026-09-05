@@ -25,6 +25,9 @@ interface SpeechToTextEngine {
 
     suspend fun initialize(): Result<Unit> = Result.success(Unit)
     suspend fun transcribe(audio: AudioChunk): TranscriptionResult
+    suspend fun transcribeFile(file: java.io.File): TranscriptionResult {
+        return transcribe(AudioChunk(file.readBytes()))
+    }
     fun close() {}
 }
 

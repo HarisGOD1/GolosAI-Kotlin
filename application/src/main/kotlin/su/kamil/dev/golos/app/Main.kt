@@ -50,19 +50,21 @@ fun main() {
     val modelDownloader = ModelDownloader()
     val defaultModelInfo = WhisperModelInfo.AVAILABLE_MODELS[1] // Base
 
-    val configuredModel = config.engine.whisper.modelPath.ifEmpty {
-        System.getenv("WHISPER_MODEL") ?: modelDownloader.getLocalModelFile(defaultModelInfo).absolutePath
-    }
+    val configuredModel =
+        config.engine.whisper.modelPath.ifEmpty {
+            System.getenv("WHISPER_MODEL") ?: modelDownloader.getLocalModelFile(defaultModelInfo).absolutePath
+        }
     val configuredBinary = binaryManager.findWhisperBinary(config.engine.whisper.binaryPath.ifEmpty { null })
     val configuredDevice = if (config.engine.whisper.device == "GPU") InferenceDevice.GPU else InferenceDevice.CPU
 
-    val whisperEngine = WhisperCppEngine(
-        modelPath = configuredModel,
-        binaryPath = configuredBinary,
-        language = config.engine.whisper.language,
-        device = configuredDevice,
-        displayName = "Whisper.cpp (${File(configuredBinary).name})"
-    )
+    val whisperEngine =
+        WhisperCppEngine(
+            modelPath = configuredModel,
+            binaryPath = configuredBinary,
+            language = config.engine.whisper.language,
+            device = configuredDevice,
+            displayName = "Whisper.cpp (${File(configuredBinary).name})",
+        )
 
     // Automatically download whisper-cli binary in the background by default if missing
     if (!binaryManager.isBinaryAvailable(configuredBinary)) {
@@ -82,28 +84,30 @@ fun main() {
         }
     }
 
-    val engines = mutableListOf<SpeechToTextEngine>(
-        MockSpeechToTextEngine(),
-        whisperEngine
-    )
+    val engines =
+        mutableListOf<SpeechToTextEngine>(
+            MockSpeechToTextEngine(),
+            whisperEngine,
+        )
 
     val activeEngine = if (config.engine.selectedId == "whisper-cpp") whisperEngine else engines.first()
 
     // 4. Application Orchestrator
-    val orchestrator = DictationOrchestrator(
-        stateMachine = stateMachine,
-        audioCapture = audioCapture,
-        speechEngine = activeEngine,
-        hotkeyHook = hotkeyHook,
-        textInjector = textInjector
-    )
+    val orchestrator =
+        DictationOrchestrator(
+            stateMachine = stateMachine,
+            audioCapture = audioCapture,
+            speechEngine = activeEngine,
+            hotkeyHook = hotkeyHook,
+            textInjector = textInjector,
+        )
 
     orchestrator.injectionConfig = config.insertion.toInjectionConfig()
     orchestrator.onTranscriptionCompleted = { result, engine ->
         historyManager.addEntry(
             text = result.text,
             durationMs = result.durationMs,
-            engine = engine.displayName
+            engine = engine.displayName,
         )
     }
 
@@ -111,25 +115,29 @@ fun main() {
     val hotkeyConfig = config.hotkey.toHotkeyConfig()
     orchestrator.start(hotkeyConfig)
 
-    Runtime.getRuntime().addShutdownHook(Thread {
-        logger.info("Shutting down GolosAI...")
-        orchestrator.stop()
-    })
+    Runtime.getRuntime().addShutdownHook(
+        Thread {
+            logger.info("Shutting down GolosAI...")
+            orchestrator.stop()
+        },
+    )
 
     // 5. User Interface
     if (!GraphicsEnvironment.isHeadless()) {
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
 
         SwingUtilities.invokeLater {
-            val dialog = PreferencesDialog(
-                orchestrator = orchestrator,
-                availableEngines = engines,
-                settingsManager = settingsManager,
-                historyManager = historyManager,
-                autoStartManager = autoStartManager
-            )
+            val dialog =
+                PreferencesDialog(
+                    orchestrator = orchestrator,
+                    availableEngines = engines,
+                    settingsManager = settingsManager,
+                    historyManager = historyManager,
+                    autoStartManager = autoStartManager,
+                )
             dialog.isVisible = true
         }
     } else {

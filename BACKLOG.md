@@ -19,16 +19,16 @@
 
 ---
 
-### 2. Real-Time Streaming & On-the-Fly Insertion [Backlogged]
+### 2. Real-Time Streaming & On-the-Fly Insertion [Implemented]
 - **Streaming Audio Engine**:
   - Feed incoming microphone audio to the voice backend in rolling chunks (500ms-1000ms sliding windows).
   - Process audio iteratively while the user continues speaking.
 - **On-the-Fly Insertion vs. Key-Release**:
-  - Preference toggle:
-    - `On-the-Fly`: Incremental typing into the active text field while speaking.
-    - `On Key Release`: Wait until push-to-talk key is released, then inject complete transcript.
+  - Preference toggle in UI & YAML configuration:
+    - `On-the-Fly`: Live incremental word-by-word injection into active text fields.
+    - `On Key Release` (Default): Wait until push-to-talk key is released, then inject complete transcript.
 - **Delta Word Injection**:
-  - Calculate delta words between successive speech recognition hypothesis outputs to avoid re-typing already committed text.
+  - Calculates newly recognized word suffixes compared to already committed words to prevent jitter and redundant typing.
 
 ---
 
@@ -87,12 +87,13 @@
 
 ---
 
-### 9. File Speech-to-Text Transcription (MP3/WAV/etc.) [Backlogged]
-*(Unblocked now that Task #5 Dictation History is implemented)*
-- **Audio File Loader**:
+### 9. File Speech-to-Text Transcription (MP3/WAV/etc.) [Implemented]
+- **Audio File Loader & Transcription Dialog**:
   - Support loading pre-recorded audio files (`.mp3`, `.wav`, `.flac`, `.m4a`, `.ogg`).
-  - Convert and pass audio to the voice backend for batch transcription.
-  - Save transcribed text directly into Dictation History and copy to clipboard on demand.
+  - Dedicated "📁 Transcribe Audio File..." actions on General and History tabs.
+  - Non-blocking batch transcription via active speech engine.
+  - Pop-up transcription preview dialog with one-click "📋 Copy to Clipboard" and "📜 View in History".
+  - Automatically records full transcription in persistent Dictation History.
 
 ---
 
@@ -115,7 +116,7 @@
 ### 12. YAML Configuration Contract & Settings Management [Implemented]
 - **Stable Unified YAML Contract**:
   - Persistent settings stored in `~/.config/golos-ai/config.yaml` (Windows: `%APPDATA%\GolosAI\config.yaml`).
-  - Schema covers hotkey, insertion strategy, audio device, engine/whisper details, and autostart.
+  - Schema covers hotkey, insertion strategy & timing, audio device, engine/whisper details, and autostart.
 - **Settings Actions in UI**:
   - "Reset to Defaults" button: restores factory settings.
   - "Export Settings..." button: exports YAML file to user-chosen path.
@@ -126,15 +127,16 @@
 
 ---
 
-### 13. Gradle Quality Tooling: Detekt & Ktlint [Backlogged]
-- Add `detekt` static code analysis plugin to enforce Kotlin best practices and code smells.
-- Add `ktlint` (e.g., via `org.jlleitschuh.gradle.ktlint`) for consistent formatting and style checks across modules.
+### 13. Gradle Quality Tooling: Detekt & Ktlint [Implemented]
+- `detekt` static code analysis configured with `./gradlew detektAll` task and `config/detekt/detekt.yml`.
+- `ktlint` style checks configured with `./gradlew ktlintAll` and `./gradlew ktlintFormat` across all subprojects.
 
 ---
 
-### 14. Test Coverage Reporting: JaCoCo [Backlogged]
-- Integrate Gradle JaCoCo plugin across all subprojects.
-- Add root `jacocoTestReport` task to aggregate code coverage metrics into HTML and XML reports.
+### 14. Test Coverage Reporting: JaCoCo [Implemented]
+- Integrated Gradle JaCoCo plugin across all subprojects (`toolVersion = "0.8.12"`).
+- Root `jacocoRootReport` task aggregates code coverage metrics into HTML and XML reports (`build/reports/jacoco/jacocoRootReport/html/index.html`).
+- Automatically finalized after `./gradlew testAll`.
 
 ---
 
@@ -146,15 +148,16 @@
 
 ---
 
-### 16. Dependency Locking [Backlogged]
-- Configure Gradle dependency locking via `dependencyLocking { lockAllConfigurations() }`.
-- Generate and commit lock files (`gradle.lockfile`) to ensure reproducible dependency resolution across environments.
+### 16. Dependency Locking [Implemented]
+- Configured Gradle dependency locking via `dependencyLocking { lockAllConfigurations() }`.
+- Generated and committed lock files (`gradle.lockfile`) across root and all subprojects.
 
 ---
 
-### 17. Offline Bundled Minimal Audio Model in Project Archive [Backlogged]
-- Bundle a lightweight GGML model (`ggml-tiny.bin` or quantized model) within the project distribution/resources.
-- Allows running transcription immediately from archive without requiring internet connection.
+### 17. Offline Bundled Minimal Audio Model in Project Archive [Implemented]
+- Built-in offline model lookup in `ModelDownloader`: checks local cache, project root `models/` directory, and classpath.
+- Added `./gradlew bundleMinimalModel` task to download and bundle `ggml-tiny.bin` into `models/` prior to creating distribution archives.
+- Added `models/README.md` documentation.
 
 ---
 

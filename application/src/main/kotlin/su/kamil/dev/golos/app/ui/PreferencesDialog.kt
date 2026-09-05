@@ -28,7 +28,6 @@ import javax.swing.*
 import javax.swing.border.CompoundBorder
 import javax.swing.border.EmptyBorder
 import javax.swing.border.LineBorder
-import javax.swing.border.TitledBorder
 import javax.swing.filechooser.FileNameExtensionFilter
 
 /**
@@ -41,9 +40,8 @@ class PreferencesDialog(
     private val availableEngines: List<SpeechToTextEngine>,
     private val settingsManager: SettingsManager = SettingsManager(),
     private val historyManager: HistoryManager = HistoryManager(),
-    private val autoStartManager: AutoStartManager = AutoStartManager()
+    private val autoStartManager: AutoStartManager = AutoStartManager(),
 ) : JFrame("GolosAI - Speech to Text Assistant") {
-
     private val statusLabel = JLabel("Status: IDLE", SwingConstants.CENTER)
     private val micCombo = JComboBox<String>()
     private val engineCombo = JComboBox<String>()
@@ -61,6 +59,7 @@ class PreferencesDialog(
 
     // Privacy & Insertion Controls
     private val insertionModeCombo = JComboBox(arrayOf("Direct Typing (Privacy-preserving)", "Clipboard Paste (Ctrl+V)"))
+    private val timingCombo = JComboBox(arrayOf("On Key Release (Default - Whole phrase)", "On the Fly (Incremental live typing)"))
     private val copyClipboardCheck = JCheckBox("Save transcription to clipboard", false)
     private val fallbackClipboardCheck = JCheckBox("Save to clipboard if no active field focused", true)
 
@@ -85,16 +84,22 @@ class PreferencesDialog(
     private val downloadProgressBar = JProgressBar(0, 100)
     private val downloadCancelFlag = AtomicBoolean(false)
 
-    private val languageCombo = JComboBox(arrayOf(
-        "Auto-Detect (auto)", "English (en)", "Russian (ru)", "Spanish (es)",
-        "German (de)", "French (fr)", "Italian (it)", "Chinese (zh)", "Japanese (ja)"
-    ))
+    private val languageCombo =
+        JComboBox(
+            arrayOf(
+                "Auto-Detect (auto)", "English (en)", "Russian (ru)", "Spanish (es)",
+                "German (de)", "French (fr)", "Italian (it)", "Chinese (zh)", "Japanese (ja)",
+            ),
+        )
     private val languageCodes = listOf("auto", "en", "ru", "es", "de", "fr", "it", "zh", "ja")
 
-    private val deviceCombo = JComboBox(arrayOf(
-        InferenceDevice.CPU.displayName,
-        InferenceDevice.GPU.displayName
-    ))
+    private val deviceCombo =
+        JComboBox(
+            arrayOf(
+                InferenceDevice.CPU.displayName,
+                InferenceDevice.GPU.displayName,
+            ),
+        )
 
     // History UI components
     private val historyListPanel = JPanel()
@@ -148,15 +153,17 @@ class PreferencesDialog(
         pttButton.preferredSize = Dimension(200, 46)
         pttButton.isFocusPainted = false
 
-        pttButton.addMouseListener(object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent?) {
-                orchestrator.onPushToTalkPressed()
-            }
+        pttButton.addMouseListener(
+            object : MouseAdapter() {
+                override fun mousePressed(e: MouseEvent?) {
+                    orchestrator.onPushToTalkPressed()
+                }
 
-            override fun mouseReleased(e: MouseEvent?) {
-                orchestrator.onPushToTalkReleased()
-            }
-        })
+                override fun mouseReleased(e: MouseEvent?) {
+                    orchestrator.onPushToTalkReleased()
+                }
+            },
+        )
         actionPanel.add(pttButton, BorderLayout.CENTER)
 
         // Configuration Toolbar (Reset, Export, Import)
@@ -170,12 +177,13 @@ class PreferencesDialog(
         importBtn.toolTipText = "Import settings from YAML file"
 
         resetBtn.addActionListener {
-            val confirm = JOptionPane.showConfirmDialog(
-                this,
-                "Reset all settings to default values?",
-                "Confirm Reset",
-                JOptionPane.YES_NO_OPTION
-            )
+            val confirm =
+                JOptionPane.showConfirmDialog(
+                    this,
+                    "Reset all settings to default values?",
+                    "Confirm Reset",
+                    JOptionPane.YES_NO_OPTION,
+                )
             if (confirm == JOptionPane.YES_OPTION) {
                 val defaultConfig = settingsManager.resetToDefaults()
                 applyConfigToUi(defaultConfig)
@@ -195,7 +203,12 @@ class PreferencesDialog(
                 }
                 saveCurrentConfig()
                 settingsManager.exportConfig(f)
-                JOptionPane.showMessageDialog(this, "Settings exported to:\n${f.absolutePath}", "Export Successful", JOptionPane.INFORMATION_MESSAGE)
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Settings exported to:\n${f.absolutePath}",
+                    "Export Successful",
+                    JOptionPane.INFORMATION_MESSAGE,
+                )
             }
         }
 
@@ -207,7 +220,12 @@ class PreferencesDialog(
                 try {
                     val imported = settingsManager.importConfig(chooser.selectedFile)
                     applyConfigToUi(imported)
-                    JOptionPane.showMessageDialog(this, "Settings successfully imported!", "Import Successful", JOptionPane.INFORMATION_MESSAGE)
+                    JOptionPane.showMessageDialog(
+                        this,
+                        "Settings successfully imported!",
+                        "Import Successful",
+                        JOptionPane.INFORMATION_MESSAGE,
+                    )
                 } catch (ex: Exception) {
                     JOptionPane.showMessageDialog(this, "Failed to import settings: ${ex.message}", "Error", JOptionPane.ERROR_MESSAGE)
                 }
@@ -228,13 +246,14 @@ class PreferencesDialog(
     private fun createGeneralTab(): JPanel {
         val panel = JPanel(GridBagLayout())
         panel.border = EmptyBorder(12, 14, 12, 14)
-        val gbc = GridBagConstraints().apply {
-            fill = GridBagConstraints.HORIZONTAL
-            insets = Insets(5, 6, 5, 6)
-            gridx = 0
-            gridy = 0
-            weightx = 0.3
-        }
+        val gbc =
+            GridBagConstraints().apply {
+                fill = GridBagConstraints.HORIZONTAL
+                insets = Insets(5, 6, 5, 6)
+                gridx = 0
+                gridy = 0
+                weightx = 0.3
+            }
 
         // 1. Microphone Device Selection
         panel.add(JLabel("Microphone Input:"), gbc)
@@ -298,65 +317,69 @@ class PreferencesDialog(
             recordBtn.requestFocusInWindow()
         }
 
-        recordBtn.addKeyListener(object : java.awt.event.KeyAdapter() {
-            override fun keyPressed(e: KeyEvent) {
-                if (recordBtn.text.startsWith("Press") || recordBtn.text.startsWith("Holding")) {
-                    val isCtrl = (e.modifiersEx and java.awt.event.InputEvent.CTRL_DOWN_MASK) != 0
-                    val isShift = (e.modifiersEx and java.awt.event.InputEvent.SHIFT_DOWN_MASK) != 0
-                    val isAlt = (e.modifiersEx and java.awt.event.InputEvent.ALT_DOWN_MASK) != 0
-                    val isMeta = (e.modifiersEx and java.awt.event.InputEvent.META_DOWN_MASK) != 0
+        recordBtn.addKeyListener(
+            object : java.awt.event.KeyAdapter() {
+                override fun keyPressed(e: KeyEvent) {
+                    if (recordBtn.text.startsWith("Press") || recordBtn.text.startsWith("Holding")) {
+                        val isCtrl = (e.modifiersEx and java.awt.event.InputEvent.CTRL_DOWN_MASK) != 0
+                        val isShift = (e.modifiersEx and java.awt.event.InputEvent.SHIFT_DOWN_MASK) != 0
+                        val isAlt = (e.modifiersEx and java.awt.event.InputEvent.ALT_DOWN_MASK) != 0
+                        val isMeta = (e.modifiersEx and java.awt.event.InputEvent.META_DOWN_MASK) != 0
 
-                    val isModifierKey = e.keyCode == KeyEvent.VK_CONTROL ||
-                            e.keyCode == KeyEvent.VK_SHIFT ||
-                            e.keyCode == KeyEvent.VK_ALT ||
-                            e.keyCode == KeyEvent.VK_META
+                        val isModifierKey =
+                            e.keyCode == KeyEvent.VK_CONTROL ||
+                                e.keyCode == KeyEvent.VK_SHIFT ||
+                                e.keyCode == KeyEvent.VK_ALT ||
+                                e.keyCode == KeyEvent.VK_META
 
-                    if (!isModifierKey && e.keyCode != KeyEvent.VK_UNDEFINED) {
-                        val keyName = KeyEvent.getKeyText(e.keyCode)
-                        val config = HotkeyConfig(
-                            keyName = keyName,
-                            ctrl = isCtrl,
-                            shift = isShift,
-                            alt = isAlt,
-                            meta = isMeta,
-                            keyCode = e.keyCode
-                        )
-                        pendingKeyConfig = config
-                        recordBtn.text = "Holding: ${config.displayText}"
-                        ctrlCheck.isSelected = isCtrl
-                        shiftCheck.isSelected = isShift
-                        altCheck.isSelected = isAlt
-                        metaCheck.isSelected = isMeta
-                        keyField.text = keyName
+                        if (!isModifierKey && e.keyCode != KeyEvent.VK_UNDEFINED) {
+                            val keyName = KeyEvent.getKeyText(e.keyCode)
+                            val config =
+                                HotkeyConfig(
+                                    keyName = keyName,
+                                    ctrl = isCtrl,
+                                    shift = isShift,
+                                    alt = isAlt,
+                                    meta = isMeta,
+                                    keyCode = e.keyCode,
+                                )
+                            pendingKeyConfig = config
+                            recordBtn.text = "Holding: ${config.displayText}"
+                            ctrlCheck.isSelected = isCtrl
+                            shiftCheck.isSelected = isShift
+                            altCheck.isSelected = isAlt
+                            metaCheck.isSelected = isMeta
+                            keyField.text = keyName
+                        }
                     }
                 }
-            }
 
-            override fun keyReleased(e: KeyEvent) {
-                val config = pendingKeyConfig
-                if (config != null) {
-                    pendingKeyConfig = null
-                    val result = orchestrator.updateHotkey(config)
-                    if (result.isSuccess) {
-                        activeHotkeyLabel.text = config.displayText
-                        activeHotkeyLabel.foreground = Color(0, 128, 0)
-                        renderStatus(orchestrator.state.value)
-                        recordBtn.text = "Recorded: ${config.displayText} (Click to change)"
-                        recordBtn.background = null
-                        saveCurrentConfig()
-                    } else {
-                        recordBtn.text = "🎙️ Record Shortcut (Click & Press Keys)"
-                        recordBtn.background = null
-                        JOptionPane.showMessageDialog(
-                            this@PreferencesDialog,
-                            "Failed to register hotkey: ${result.exceptionOrNull()?.message}",
-                            "Error",
-                            JOptionPane.ERROR_MESSAGE
-                        )
+                override fun keyReleased(e: KeyEvent) {
+                    val config = pendingKeyConfig
+                    if (config != null) {
+                        pendingKeyConfig = null
+                        val result = orchestrator.updateHotkey(config)
+                        if (result.isSuccess) {
+                            activeHotkeyLabel.text = config.displayText
+                            activeHotkeyLabel.foreground = Color(0, 128, 0)
+                            renderStatus(orchestrator.state.value)
+                            recordBtn.text = "Recorded: ${config.displayText} (Click to change)"
+                            recordBtn.background = null
+                            saveCurrentConfig()
+                        } else {
+                            recordBtn.text = "🎙️ Record Shortcut (Click & Press Keys)"
+                            recordBtn.background = null
+                            JOptionPane.showMessageDialog(
+                                this@PreferencesDialog,
+                                "Failed to register hotkey: ${result.exceptionOrNull()?.message}",
+                                "Error",
+                                JOptionPane.ERROR_MESSAGE,
+                            )
+                        }
                     }
                 }
-            }
-        })
+            },
+        )
         hotkeyOuterPanel.add(recordBtn, BorderLayout.NORTH)
 
         val hotkeyEditPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0))
@@ -371,13 +394,14 @@ class PreferencesDialog(
 
         applyHotkeyBtn.addActionListener {
             val primaryKey = keyField.text.trim().ifEmpty { "F8" }
-            val newConfig = HotkeyConfig(
-                keyName = primaryKey,
-                ctrl = ctrlCheck.isSelected,
-                shift = shiftCheck.isSelected,
-                alt = altCheck.isSelected,
-                meta = metaCheck.isSelected
-            )
+            val newConfig =
+                HotkeyConfig(
+                    keyName = primaryKey,
+                    ctrl = ctrlCheck.isSelected,
+                    shift = shiftCheck.isSelected,
+                    alt = altCheck.isSelected,
+                    meta = metaCheck.isSelected,
+                )
             val result = orchestrator.updateHotkey(newConfig)
             if (result.isSuccess) {
                 activeHotkeyLabel.text = newConfig.displayText
@@ -388,7 +412,7 @@ class PreferencesDialog(
                     this,
                     "Hotkey updated to: ${newConfig.displayText}",
                     "Hotkey Registered",
-                    JOptionPane.INFORMATION_MESSAGE
+                    JOptionPane.INFORMATION_MESSAGE,
                 )
             } else {
                 activeHotkeyLabel.foreground = Color(180, 0, 0)
@@ -396,7 +420,7 @@ class PreferencesDialog(
                     this,
                     "Failed to register hotkey: ${result.exceptionOrNull()?.message}",
                     "Error",
-                    JOptionPane.ERROR_MESSAGE
+                    JOptionPane.ERROR_MESSAGE,
                 )
             }
         }
@@ -417,9 +441,22 @@ class PreferencesDialog(
         }
         panel.add(insertionModeCombo, gbc)
 
-        // 6. Clipboard Privacy
+        // 6. Insertion Timing (On Key Release vs On the Fly)
         gbc.gridx = 0
         gbc.gridy = 5
+        gbc.weightx = 0.3
+        panel.add(JLabel("Insertion Timing:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        timingCombo.addActionListener {
+            syncInjectionConfig()
+            saveCurrentConfig()
+        }
+        panel.add(timingCombo, gbc)
+
+        // 7. Clipboard Privacy
+        gbc.gridx = 0
+        gbc.gridy = 6
         gbc.weightx = 0.3
         panel.add(JLabel("Clipboard Privacy:"), gbc)
         gbc.gridx = 1
@@ -437,9 +474,9 @@ class PreferencesDialog(
         privacyPanel.add(fallbackClipboardCheck)
         panel.add(privacyPanel, gbc)
 
-        // 7. System Autostart
+        // 8. System Autostart
         gbc.gridx = 0
-        gbc.gridy = 6
+        gbc.gridy = 7
         gbc.weightx = 0.3
         panel.add(JLabel("System Startup:"), gbc)
         gbc.gridx = 1
@@ -451,19 +488,33 @@ class PreferencesDialog(
         }
         panel.add(autostartCheck, gbc)
 
+        // 9. Audio File Speech-to-Text
+        gbc.gridx = 0
+        gbc.gridy = 8
+        gbc.weightx = 0.3
+        panel.add(JLabel("Audio File Dictation:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        val transcribeFileBtn = JButton("📁 Transcribe Audio File (WAV, MP3, FLAC)...")
+        transcribeFileBtn.addActionListener {
+            promptAndTranscribeAudioFile()
+        }
+        panel.add(transcribeFileBtn, gbc)
+
         return panel
     }
 
     private fun createWhisperTab(): JPanel {
         val panel = JPanel(GridBagLayout())
         panel.border = EmptyBorder(12, 14, 12, 14)
-        val gbc = GridBagConstraints().apply {
-            fill = GridBagConstraints.HORIZONTAL
-            insets = Insets(5, 6, 5, 6)
-            gridx = 0
-            gridy = 0
-            weightx = 0.3
-        }
+        val gbc =
+            GridBagConstraints().apply {
+                fill = GridBagConstraints.HORIZONTAL
+                insets = Insets(5, 6, 5, 6)
+                gridx = 0
+                gridy = 0
+                weightx = 0.3
+            }
 
         // 1. Whisper Executable Management
         panel.add(JLabel("Whisper Executable:"), gbc)
@@ -591,6 +642,9 @@ class PreferencesDialog(
         val searchBox = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
         searchBox.add(JLabel("Search History:"))
         searchBox.add(historySearchField)
+        val historyTranscribeBtn = JButton("📁 Transcribe Audio File...")
+        historyTranscribeBtn.addActionListener { promptAndTranscribeAudioFile() }
+        searchBox.add(historyTranscribeBtn)
         topBar.add(searchBox, BorderLayout.WEST)
 
         val rightBox = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
@@ -599,12 +653,13 @@ class PreferencesDialog(
 
         val clearBtn = JButton("Clear History")
         clearBtn.addActionListener {
-            val confirm = JOptionPane.showConfirmDialog(
-                this,
-                "Clear all transcription history?",
-                "Confirm Clear",
-                JOptionPane.YES_NO_OPTION
-            )
+            val confirm =
+                JOptionPane.showConfirmDialog(
+                    this,
+                    "Clear all transcription history?",
+                    "Confirm Clear",
+                    JOptionPane.YES_NO_OPTION,
+                )
             if (confirm == JOptionPane.YES_OPTION) {
                 historyManager.clear()
                 refreshHistoryList()
@@ -634,19 +689,24 @@ class PreferencesDialog(
     private fun refreshHistoryList(query: String = historySearchField.text.trim()) {
         historyListPanel.removeAll()
         val allEntries = historyManager.getAll()
-        val filtered = if (query.isEmpty()) {
-            allEntries
-        } else {
-            allEntries.filter { it.text.contains(query, ignoreCase = true) }
-        }
+        val filtered =
+            if (query.isEmpty()) {
+                allEntries
+            } else {
+                allEntries.filter { it.text.contains(query, ignoreCase = true) }
+            }
 
         historyCountLabel.text = "Showing ${filtered.size} of ${allEntries.size} entries"
 
         if (filtered.isEmpty()) {
-            val emptyLabel = JLabel(
-                if (allEntries.isEmpty()) "No dictations yet. Hold your hotkey (${orchestrator.currentHotkey.displayText}) and speak!"
-                else "No transcriptions matching \"$query\""
-            )
+            val emptyLabel =
+                JLabel(
+                    if (allEntries.isEmpty()) {
+                        "No dictations yet. Hold your hotkey (${orchestrator.currentHotkey.displayText}) and speak!"
+                    } else {
+                        "No transcriptions matching \"$query\""
+                    },
+                )
             emptyLabel.border = EmptyBorder(20, 20, 20, 20)
             emptyLabel.foreground = Color.GRAY
             historyListPanel.add(emptyLabel)
@@ -663,12 +723,16 @@ class PreferencesDialog(
         historyListPanel.repaint()
     }
 
-    private fun createHistoryCard(entry: HistoryEntry, dateFormat: SimpleDateFormat): JPanel {
+    private fun createHistoryCard(
+        entry: HistoryEntry,
+        dateFormat: SimpleDateFormat,
+    ): JPanel {
         val card = JPanel(BorderLayout(6, 6))
-        card.border = CompoundBorder(
-            LineBorder(Color(218, 224, 233), 1, true),
-            EmptyBorder(8, 10, 8, 10)
-        )
+        card.border =
+            CompoundBorder(
+                LineBorder(Color(218, 224, 233), 1, true),
+                EmptyBorder(8, 10, 8, 10),
+            )
         card.background = Color(250, 252, 255)
         card.maximumSize = Dimension(Short.MAX_VALUE.toInt(), 120)
 
@@ -733,12 +797,13 @@ class PreferencesDialog(
         downloadProgressBar.string = "Downloading whisper-cli..."
 
         coroutineScope.launch {
-            val result = binaryManager.downloadPrecompiledBinary { pct, status ->
-                SwingUtilities.invokeLater {
-                    downloadProgressBar.value = (pct * 100).toInt()
-                    downloadProgressBar.string = status
+            val result =
+                binaryManager.downloadPrecompiledBinary { pct, status ->
+                    SwingUtilities.invokeLater {
+                        downloadProgressBar.value = (pct * 100).toInt()
+                        downloadProgressBar.string = status
+                    }
                 }
-            }
 
             SwingUtilities.invokeLater {
                 downloadBinaryBtn.isEnabled = true
@@ -753,7 +818,7 @@ class PreferencesDialog(
                         this@PreferencesDialog,
                         "whisper-cli binary installed successfully:\n${file.absolutePath}",
                         "Installation Complete",
-                        JOptionPane.INFORMATION_MESSAGE
+                        JOptionPane.INFORMATION_MESSAGE,
                     )
                 } else {
                     downloadProgressBar.string = "Download Failed"
@@ -761,7 +826,7 @@ class PreferencesDialog(
                         this@PreferencesDialog,
                         "Failed to download whisper-cli:\n${result.exceptionOrNull()?.message}",
                         "Download Error",
-                        JOptionPane.ERROR_MESSAGE
+                        JOptionPane.ERROR_MESSAGE,
                     )
                 }
             }
@@ -791,18 +856,19 @@ class PreferencesDialog(
         downloadCancelFlag.set(false)
 
         coroutineScope.launch {
-            val result = modelDownloader.downloadModel(
-                model = selectedModel,
-                cancelFlag = downloadCancelFlag,
-                onProgress = { bytesDownloaded, totalBytes, percent ->
-                    SwingUtilities.invokeLater {
-                        downloadProgressBar.value = percent
-                        val mbDownloaded = bytesDownloaded / (1024 * 1024)
-                        val mbTotal = totalBytes / (1024 * 1024)
-                        downloadProgressBar.string = "$percent% ($mbDownloaded MB / $mbTotal MB)"
-                    }
-                }
-            )
+            val result =
+                modelDownloader.downloadModel(
+                    model = selectedModel,
+                    cancelFlag = downloadCancelFlag,
+                    onProgress = { bytesDownloaded, totalBytes, percent ->
+                        SwingUtilities.invokeLater {
+                            downloadProgressBar.value = percent
+                            val mbDownloaded = bytesDownloaded / (1024 * 1024)
+                            val mbTotal = totalBytes / (1024 * 1024)
+                            downloadProgressBar.string = "$percent% ($mbDownloaded MB / $mbTotal MB)"
+                        }
+                    },
+                )
 
             SwingUtilities.invokeLater {
                 downloadModelBtn.isEnabled = true
@@ -816,7 +882,7 @@ class PreferencesDialog(
                         this@PreferencesDialog,
                         "Whisper model downloaded successfully:\n${file.absolutePath}",
                         "Download Complete",
-                        JOptionPane.INFORMATION_MESSAGE
+                        JOptionPane.INFORMATION_MESSAGE,
                     )
                 } else {
                     downloadProgressBar.string = "Failed"
@@ -824,7 +890,7 @@ class PreferencesDialog(
                         this@PreferencesDialog,
                         "Download failed: ${result.exceptionOrNull()?.message}",
                         "Error",
-                        JOptionPane.ERROR_MESSAGE
+                        JOptionPane.ERROR_MESSAGE,
                     )
                 }
             }
@@ -833,11 +899,14 @@ class PreferencesDialog(
 
     private fun syncInjectionConfig() {
         val mode = if (insertionModeCombo.selectedIndex == 0) InsertionMode.DIRECT_TYPING else InsertionMode.CLIPBOARD_PASTE
-        orchestrator.injectionConfig = InjectionConfig(
-            mode = mode,
-            copyToClipboard = copyClipboardCheck.isSelected,
-            copyToClipboardIfNoField = fallbackClipboardCheck.isSelected
-        )
+        val timing = if (timingCombo.selectedIndex == 0) InjectionTiming.ON_KEY_RELEASE else InjectionTiming.ON_THE_FLY
+        orchestrator.injectionConfig =
+            InjectionConfig(
+                mode = mode,
+                timing = timing,
+                copyToClipboard = copyClipboardCheck.isSelected,
+                copyToClipboardIfNoField = fallbackClipboardCheck.isSelected,
+            )
     }
 
     private fun refreshMicrophoneList() {
@@ -859,7 +928,7 @@ class PreferencesDialog(
             historyManager.addEntry(
                 text = result.text,
                 durationMs = result.durationMs,
-                engine = engine.displayName
+                engine = engine.displayName,
             )
             SwingUtilities.invokeLater {
                 refreshHistoryList()
@@ -888,6 +957,7 @@ class PreferencesDialog(
         val ins = c.insertion.toInjectionConfig()
         orchestrator.injectionConfig = ins
         insertionModeCombo.selectedIndex = if (ins.mode == InsertionMode.DIRECT_TYPING) 0 else 1
+        timingCombo.selectedIndex = if (ins.timing == InjectionTiming.ON_KEY_RELEASE) 0 else 1
         copyClipboardCheck.isSelected = ins.copyToClipboard
         fallbackClipboardCheck.isSelected = ins.copyToClipboardIfNoField
 
@@ -922,28 +992,33 @@ class PreferencesDialog(
         val ins = orchestrator.injectionConfig
         val selectedEngineId = if (orchestrator.speechEngine is WhisperCppEngine) "whisper-cpp" else "mock"
 
-        val config = GolosConfig(
-            version = "1.0",
-            hotkey = HotkeySettings.from(hk),
-            insertion = InsertionSettings.from(ins),
-            audio = AudioSettings(
-                deviceName = orchestrator.selectedDevice?.id ?: "",
-                provider = "JavaSound"
-            ),
-            engine = EngineSettings(
-                selectedId = selectedEngineId,
-                whisper = WhisperSettings(
-                    binaryPath = whisperEngine?.binaryPath ?: "",
-                    modelPath = whisperEngine?.modelPath ?: "",
-                    modelName = WhisperModelInfo.AVAILABLE_MODELS.getOrNull(modelCombo.selectedIndex)?.name ?: "base",
-                    language = whisperEngine?.language ?: "auto",
-                    device = whisperEngine?.device?.name ?: "CPU"
-                )
-            ),
-            autostart = AutostartSettings(
-                enabled = autostartCheck.isSelected
+        val config =
+            GolosConfig(
+                version = "1.0",
+                hotkey = HotkeySettings.from(hk),
+                insertion = InsertionSettings.from(ins),
+                audio =
+                    AudioSettings(
+                        deviceName = orchestrator.selectedDevice?.id ?: "",
+                        provider = "JavaSound",
+                    ),
+                engine =
+                    EngineSettings(
+                        selectedId = selectedEngineId,
+                        whisper =
+                            WhisperSettings(
+                                binaryPath = whisperEngine?.binaryPath ?: "",
+                                modelPath = whisperEngine?.modelPath ?: "",
+                                modelName = WhisperModelInfo.AVAILABLE_MODELS.getOrNull(modelCombo.selectedIndex)?.name ?: "base",
+                                language = whisperEngine?.language ?: "auto",
+                                device = whisperEngine?.device?.name ?: "CPU",
+                            ),
+                    ),
+                autostart =
+                    AutostartSettings(
+                        enabled = autostartCheck.isSelected,
+                    ),
             )
-        )
         settingsManager.save(config)
     }
 
@@ -978,5 +1053,79 @@ class PreferencesDialog(
                 pttButton.text = "⏳ Processing speech..."
             }
         }
+    }
+
+    private fun promptAndTranscribeAudioFile() {
+        val chooser = JFileChooser()
+        chooser.dialogTitle = "Select Audio File for Speech Recognition"
+        chooser.fileFilter = FileNameExtensionFilter(
+            "Audio Files (*.wav, *.mp3, *.flac, *.ogg, *.m4a)",
+            "wav", "mp3", "flac", "ogg", "m4a",
+        )
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            val audioFile = chooser.selectedFile
+            statusLabel.text = "Status: ⏳ Transcribing file '${audioFile.name}'..."
+            statusLabel.background = Color(255, 250, 220)
+            statusLabel.foreground = Color(160, 100, 0)
+
+            coroutineScope.launch {
+                val result = orchestrator.transcribeFile(audioFile)
+                SwingUtilities.invokeLater {
+                    renderStatus(orchestrator.state.value)
+                    refreshHistoryList()
+
+                    if (copyClipboardCheck.isSelected && result.text.isNotBlank()) {
+                        copyToClipboard(result.text)
+                    }
+
+                    showFileTranscriptionResult(audioFile, result)
+                }
+            }
+        }
+    }
+
+    private fun showFileTranscriptionResult(file: File, result: TranscriptionResult) {
+        val dialog = JDialog(this, "Transcription Result - ${file.name}", true)
+        dialog.setSize(540, 400)
+        dialog.setLocationRelativeTo(this)
+        dialog.layout = BorderLayout(10, 10)
+
+        val header = JPanel(BorderLayout(4, 4))
+        header.border = EmptyBorder(12, 14, 4, 14)
+        val infoLabel = JLabel(
+            "<html><b>File:</b> ${file.name}<br/><b>Duration:</b> ${result.durationMs} ms | <b>Engine:</b> ${orchestrator.speechEngine.displayName}</html>"
+        )
+        header.add(infoLabel, BorderLayout.CENTER)
+        dialog.add(header, BorderLayout.NORTH)
+
+        val textArea = JTextArea(result.text)
+        textArea.lineWrap = true
+        textArea.wrapStyleWord = true
+        textArea.isEditable = false
+        textArea.font = Font(Font.SANS_SERIF, Font.PLAIN, 13)
+        textArea.margin = Insets(8, 8, 8, 8)
+        val scrollPane = JScrollPane(textArea)
+        scrollPane.border = CompoundBorder(EmptyBorder(0, 14, 0, 14), LineBorder(Color.LIGHT_GRAY))
+        dialog.add(scrollPane, BorderLayout.CENTER)
+
+        val buttonPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 8))
+        val copyBtn = JButton("📋 Copy to Clipboard")
+        copyBtn.addActionListener {
+            copyToClipboard(result.text)
+            copyBtn.text = "✓ Copied!"
+        }
+        val closeBtn = JButton("Close")
+        closeBtn.addActionListener { dialog.dispose() }
+
+        buttonPanel.add(copyBtn)
+        buttonPanel.add(closeBtn)
+        dialog.add(buttonPanel, BorderLayout.SOUTH)
+
+        dialog.isVisible = true
+    }
+
+    private fun copyToClipboard(text: String) {
+        val selection = StringSelection(text)
+        Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
     }
 }

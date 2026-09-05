@@ -35,11 +35,13 @@ data class HotkeySettings(
 
 data class InsertionSettings(
     val mode: String = "DIRECT_TYPING",
+    val timing: String = "ON_KEY_RELEASE",
     val copyToClipboard: Boolean = false,
     val copyToClipboardIfNoField: Boolean = true
 ) {
     fun toInjectionConfig(): InjectionConfig = InjectionConfig(
         mode = runCatching { InsertionMode.valueOf(mode) }.getOrDefault(InsertionMode.DIRECT_TYPING),
+        timing = runCatching { InjectionTiming.valueOf(timing) }.getOrDefault(InjectionTiming.ON_KEY_RELEASE),
         copyToClipboard = copyToClipboard,
         copyToClipboardIfNoField = copyToClipboardIfNoField
     )
@@ -47,6 +49,7 @@ data class InsertionSettings(
     companion object {
         fun from(c: InjectionConfig) = InsertionSettings(
             mode = c.mode.name,
+            timing = c.timing.name,
             copyToClipboard = c.copyToClipboard,
             copyToClipboardIfNoField = c.copyToClipboardIfNoField
         )

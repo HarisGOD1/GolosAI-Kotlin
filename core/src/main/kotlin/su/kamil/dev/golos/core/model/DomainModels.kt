@@ -69,8 +69,17 @@ enum class InsertionMode {
     CLIPBOARD_PASTE
 }
 
+enum class InjectionTiming {
+    /** Injects transcribed text once when push-to-talk hotkey is released (Default, high accuracy). */
+    ON_KEY_RELEASE,
+
+    /** Streams and types words incrementally on the fly into the active text field while speaking. */
+    ON_THE_FLY
+}
+
 data class InjectionConfig(
     val mode: InsertionMode = InsertionMode.DIRECT_TYPING,
+    val timing: InjectionTiming = InjectionTiming.ON_KEY_RELEASE,
     val copyToClipboard: Boolean = false, // Disabled by default for privacy
     val copyToClipboardIfNoField: Boolean = true // Fallback to clipboard if active input is missing
 )

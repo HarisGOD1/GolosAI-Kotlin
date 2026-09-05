@@ -77,13 +77,37 @@ class ModelDownloader(
         }
     }
 
+    fun findModelFile(model: WhisperModelInfo): File? {
+        // 1. Check local cache dir (~/.cache/golos-ai/models/)
+        val local = File(modelsDir, model.filename)
+        if (local.exists() && local.length() > 1024 * 1024) return local
+
+        // 2. Check bundled project models/ folder for offline archives
+        val bundled = File("models", model.filename)
+        if (bundled.exists() && bundled.length() > 1024 * 1024) return bundled
+
+        val projectRootBundled = File(System.getProperty("user.dir"), "models/${model.filename}")
+        if (projectRootBundled.exists() && projectRootBundled.length() > 1024 * 1024) return projectRootBundled
+
+        // 3. Check bundled classpath resource
+        val resourceStream = javaClass.getResourceAsStream("/models/${model.filename}")
+        if (resourceStream != null) {
+            local.parentFile.mkdirs()
+            resourceStream.use { input ->
+                local.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (local.exists() && local.length() > 1024) return local
+        }
+
+        return null
+    }
+
     fun isModelDownloaded(model: WhisperModelInfo): Boolean {
-        val file = File(modelsDir, model.filename)
-        return file.exists() && file.length() > 1024 * 1024 // at least 1MB
+        return findModelFile(model) != null
     }
 
     fun getLocalModelFile(model: WhisperModelInfo): File {
-        return File(modelsDir, model.filename)
+        return findModelFile(model) ?: File(modelsDir, model.filename)
     }
 
     /**

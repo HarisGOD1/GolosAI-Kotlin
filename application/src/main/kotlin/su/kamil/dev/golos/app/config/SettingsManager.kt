@@ -12,7 +12,7 @@ import java.io.FileWriter
  * Manages configuration persistence using a stable, unified YAML schema.
  */
 class SettingsManager(
-    val configFile: File = resolveDefaultConfigFile()
+    val configFile: File = resolveDefaultConfigFile(),
 ) {
     private val logger = LoggerFactory.getLogger(SettingsManager::class.java)
 
@@ -29,11 +29,12 @@ class SettingsManager(
     }
 
     private val yaml: Yaml by lazy {
-        val options = DumperOptions().apply {
-            defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
-            isPrettyFlow = true
-            indent = 2
-        }
+        val options =
+            DumperOptions().apply {
+                defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
+                isPrettyFlow = true
+                indent = 2
+            }
         Yaml(options)
     }
 
@@ -77,16 +78,20 @@ class SettingsManager(
         if (!sourceFile.exists()) {
             throw IllegalArgumentException("Source settings file does not exist: ${sourceFile.absolutePath}")
         }
-        val imported = FileReader(sourceFile).use { reader ->
-            val data = yaml.load<Map<String, Any>>(reader) ?: emptyMap()
-            parseConfig(data)
-        }
+        val imported =
+            FileReader(sourceFile).use { reader ->
+                val data = yaml.load<Map<String, Any>>(reader) ?: emptyMap()
+                parseConfig(data)
+            }
         save(imported)
         logger.info("Successfully imported settings from: {}", sourceFile.absolutePath)
         return imported
     }
 
-    private fun saveToFile(config: GolosConfig, file: File) {
+    private fun saveToFile(
+        config: GolosConfig,
+        file: File,
+    ) {
         try {
             file.parentFile?.mkdirs()
             val map = toMap(config)
@@ -102,37 +107,44 @@ class SettingsManager(
     private fun toMap(c: GolosConfig): Map<String, Any> {
         return linkedMapOf(
             "version" to c.version,
-            "hotkey" to linkedMapOf(
-                "keyName" to c.hotkey.keyName,
-                "ctrl" to c.hotkey.ctrl,
-                "shift" to c.hotkey.shift,
-                "alt" to c.hotkey.alt,
-                "meta" to c.hotkey.meta,
-                "keyCode" to c.hotkey.keyCode
-            ),
-            "insertion" to linkedMapOf(
-                "mode" to c.insertion.mode,
-                "copyToClipboard" to c.insertion.copyToClipboard,
-                "copyToClipboardIfNoField" to c.insertion.copyToClipboardIfNoField
-            ),
-            "audio" to linkedMapOf(
-                "deviceName" to c.audio.deviceName,
-                "provider" to c.audio.provider
-            ),
-            "engine" to linkedMapOf(
-                "selectedId" to c.engine.selectedId,
-                "whisper" to linkedMapOf(
-                    "binaryPath" to c.engine.whisper.binaryPath,
-                    "modelPath" to c.engine.whisper.modelPath,
-                    "modelName" to c.engine.whisper.modelName,
-                    "language" to c.engine.whisper.language,
-                    "device" to c.engine.whisper.device,
-                    "threads" to c.engine.whisper.threads
-                )
-            ),
-            "autostart" to linkedMapOf(
-                "enabled" to c.autostart.enabled
-            )
+            "hotkey" to
+                linkedMapOf(
+                    "keyName" to c.hotkey.keyName,
+                    "ctrl" to c.hotkey.ctrl,
+                    "shift" to c.hotkey.shift,
+                    "alt" to c.hotkey.alt,
+                    "meta" to c.hotkey.meta,
+                    "keyCode" to c.hotkey.keyCode,
+                ),
+            "insertion" to
+                linkedMapOf(
+                    "mode" to c.insertion.mode,
+                    "timing" to c.insertion.timing,
+                    "copyToClipboard" to c.insertion.copyToClipboard,
+                    "copyToClipboardIfNoField" to c.insertion.copyToClipboardIfNoField,
+                ),
+            "audio" to
+                linkedMapOf(
+                    "deviceName" to c.audio.deviceName,
+                    "provider" to c.audio.provider,
+                ),
+            "engine" to
+                linkedMapOf(
+                    "selectedId" to c.engine.selectedId,
+                    "whisper" to
+                        linkedMapOf(
+                            "binaryPath" to c.engine.whisper.binaryPath,
+                            "modelPath" to c.engine.whisper.modelPath,
+                            "modelName" to c.engine.whisper.modelName,
+                            "language" to c.engine.whisper.language,
+                            "device" to c.engine.whisper.device,
+                            "threads" to c.engine.whisper.threads,
+                        ),
+                ),
+            "autostart" to
+                linkedMapOf(
+                    "enabled" to c.autostart.enabled,
+                ),
         )
     }
 
@@ -141,47 +153,54 @@ class SettingsManager(
         val version = map["version"]?.toString() ?: "1.0"
 
         val hkMap = map["hotkey"] as? Map<String, Any> ?: emptyMap()
-        val hotkey = HotkeySettings(
-            keyName = hkMap["keyName"]?.toString() ?: "F8",
-            ctrl = hkMap["ctrl"] as? Boolean ?: false,
-            shift = hkMap["shift"] as? Boolean ?: false,
-            alt = hkMap["alt"] as? Boolean ?: false,
-            meta = hkMap["meta"] as? Boolean ?: false,
-            keyCode = (hkMap["keyCode"] as? Number)?.toInt() ?: 119
-        )
+        val hotkey =
+            HotkeySettings(
+                keyName = hkMap["keyName"]?.toString() ?: "F8",
+                ctrl = hkMap["ctrl"] as? Boolean ?: false,
+                shift = hkMap["shift"] as? Boolean ?: false,
+                alt = hkMap["alt"] as? Boolean ?: false,
+                meta = hkMap["meta"] as? Boolean ?: false,
+                keyCode = (hkMap["keyCode"] as? Number)?.toInt() ?: 119,
+            )
 
         val insMap = map["insertion"] as? Map<String, Any> ?: emptyMap()
-        val insertion = InsertionSettings(
-            mode = insMap["mode"]?.toString() ?: "DIRECT_TYPING",
-            copyToClipboard = insMap["copyToClipboard"] as? Boolean ?: false,
-            copyToClipboardIfNoField = insMap["copyToClipboardIfNoField"] as? Boolean ?: true
-        )
+        val insertion =
+            InsertionSettings(
+                mode = insMap["mode"]?.toString() ?: "DIRECT_TYPING",
+                timing = insMap["timing"]?.toString() ?: "ON_KEY_RELEASE",
+                copyToClipboard = insMap["copyToClipboard"] as? Boolean ?: false,
+                copyToClipboardIfNoField = insMap["copyToClipboardIfNoField"] as? Boolean ?: true,
+            )
 
         val audMap = map["audio"] as? Map<String, Any> ?: emptyMap()
-        val audio = AudioSettings(
-            deviceName = audMap["deviceName"]?.toString() ?: "",
-            provider = audMap["provider"]?.toString() ?: "JavaSound"
-        )
+        val audio =
+            AudioSettings(
+                deviceName = audMap["deviceName"]?.toString() ?: "",
+                provider = audMap["provider"]?.toString() ?: "JavaSound",
+            )
 
         val engMap = map["engine"] as? Map<String, Any> ?: emptyMap()
         val whsMap = engMap["whisper"] as? Map<String, Any> ?: emptyMap()
-        val whisper = WhisperSettings(
-            binaryPath = whsMap["binaryPath"]?.toString() ?: "",
-            modelPath = whsMap["modelPath"]?.toString() ?: "",
-            modelName = whsMap["modelName"]?.toString() ?: "base",
-            language = whsMap["language"]?.toString() ?: "auto",
-            device = whsMap["device"]?.toString() ?: "CPU",
-            threads = (whsMap["threads"] as? Number)?.toInt() ?: 4
-        )
-        val engine = EngineSettings(
-            selectedId = engMap["selectedId"]?.toString() ?: "mock",
-            whisper = whisper
-        )
+        val whisper =
+            WhisperSettings(
+                binaryPath = whsMap["binaryPath"]?.toString() ?: "",
+                modelPath = whsMap["modelPath"]?.toString() ?: "",
+                modelName = whsMap["modelName"]?.toString() ?: "base",
+                language = whsMap["language"]?.toString() ?: "auto",
+                device = whsMap["device"]?.toString() ?: "CPU",
+                threads = (whsMap["threads"] as? Number)?.toInt() ?: 4,
+            )
+        val engine =
+            EngineSettings(
+                selectedId = engMap["selectedId"]?.toString() ?: "mock",
+                whisper = whisper,
+            )
 
         val autoMap = map["autostart"] as? Map<String, Any> ?: emptyMap()
-        val autostart = AutostartSettings(
-            enabled = autoMap["enabled"] as? Boolean ?: false
-        )
+        val autostart =
+            AutostartSettings(
+                enabled = autoMap["enabled"] as? Boolean ?: false,
+            )
 
         return GolosConfig(
             version = version,
@@ -189,7 +208,7 @@ class SettingsManager(
             insertion = insertion,
             audio = audio,
             engine = engine,
-            autostart = autostart
+            autostart = autostart,
         )
     }
 }

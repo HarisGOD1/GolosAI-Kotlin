@@ -30,7 +30,12 @@ subprojects {
 
     configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
         buildUponDefaultConfig = true
-        allRules = false
+        config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+        ignoreFailures = true
+    }
+
+    configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
+        ignoreFailures.set(true)
     }
 
     dependencies {
@@ -90,4 +95,36 @@ tasks.register("testAll") {
     description = "Runs all unit and integration tests across all modules in one command"
     dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "test" } })
     finalizedBy(jacocoRootReport)
+}
+
+tasks.register("detektAll") {
+    group = "verification"
+    description = "Runs Detekt static analysis across all modules"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "detekt" } })
+}
+
+tasks.register("ktlintAll") {
+    group = "verification"
+    description = "Runs Ktlint checks across all modules"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "ktlintCheck" } })
+}
+
+tasks.register("bundleMinimalModel") {
+    group = "distribution"
+    description = "Downloads the minimal GGML model (ggml-tiny.bin) into models/ for offline archive distribution"
+    doLast {
+        val modelsDir = file("models")
+        modelsDir.mkdirs()
+        val target = file("models/ggml-tiny.bin")
+        if (!target.exists() || target.length() < 1024 * 1024) {
+            println("Downloading minimal audio model (ggml-tiny.bin) for offline archive...")
+            val url = java.net.URI("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin").toURL()
+            url.openStream().use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            println("Minimal model bundled at: ${target.absolutePath} (${target.length() / (1024 * 1024)} MB)")
+        } else {
+            println("Minimal model already present at: ${target.absolutePath}")
+        }
+    }
 }

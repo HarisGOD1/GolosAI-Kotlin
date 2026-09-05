@@ -1,7 +1,9 @@
 package su.kamil.dev.golos.app
 
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import su.kamil.dev.golos.app.config.SettingsManager
@@ -12,17 +14,17 @@ import su.kamil.dev.golos.core.model.InsertionSettings
 import java.io.File
 
 class SettingsAndHistoryTest {
-
     private lateinit var tempDir: File
     private lateinit var tempConfigFile: File
     private lateinit var tempHistoryFile: File
 
     @BeforeEach
     fun setUp() {
-        tempDir = File.createTempFile("golos_test_", "").apply {
-            delete()
-            mkdirs()
-        }
+        tempDir =
+            File.createTempFile("golos_test_", "").apply {
+                delete()
+                mkdirs()
+            }
         tempConfigFile = File(tempDir, "config.yaml")
         tempHistoryFile = File(tempDir, "history.jsonl")
     }
@@ -47,12 +49,13 @@ class SettingsAndHistoryTest {
     @Test
     fun `SettingsManager saves and reloads customized YAML configuration`() {
         val manager = SettingsManager(tempConfigFile)
-        val customConfig = GolosConfig(
-            version = "1.0",
-            hotkey = HotkeySettings(keyName = "L", ctrl = true, shift = true),
-            insertion = InsertionSettings(mode = "CLIPBOARD_PASTE", copyToClipboard = true),
-            autostart = su.kamil.dev.golos.core.model.AutostartSettings(enabled = true)
-        )
+        val customConfig =
+            GolosConfig(
+                version = "1.0",
+                hotkey = HotkeySettings(keyName = "L", ctrl = true, shift = true),
+                insertion = InsertionSettings(mode = "CLIPBOARD_PASTE", copyToClipboard = true),
+                autostart = su.kamil.dev.golos.core.model.AutostartSettings(enabled = true),
+            )
 
         manager.save(customConfig)
 
@@ -62,6 +65,7 @@ class SettingsAndHistoryTest {
         assertTrue(reloaded.hotkey.shift)
         assertFalse(reloaded.hotkey.alt)
         assertEquals("CLIPBOARD_PASTE", reloaded.insertion.mode)
+        assertEquals("ON_KEY_RELEASE", reloaded.insertion.timing)
         assertTrue(reloaded.insertion.copyToClipboard)
         assertTrue(reloaded.autostart.enabled)
 
@@ -71,13 +75,30 @@ class SettingsAndHistoryTest {
     }
 
     @Test
+    fun `SettingsManager preserves on the fly timing configuration`() {
+        val manager = SettingsManager(tempConfigFile)
+        val config = GolosConfig(
+            insertion = InsertionSettings(
+                mode = "DIRECT_TYPING",
+                timing = "ON_THE_FLY"
+            )
+        )
+        manager.save(config)
+
+        val reloaded = manager.load()
+        assertEquals("ON_THE_FLY", reloaded.insertion.timing)
+        assertEquals(su.kamil.dev.golos.core.model.InjectionTiming.ON_THE_FLY, reloaded.insertion.toInjectionConfig().timing)
+    }
+
+    @Test
     fun `SettingsManager export and import restores configuration`() {
         val manager = SettingsManager(tempConfigFile)
         val exportFile = File(tempDir, "exported.yaml")
 
-        val initialConfig = GolosConfig(
-            hotkey = HotkeySettings(keyName = "F12", alt = true)
-        )
+        val initialConfig =
+            GolosConfig(
+                hotkey = HotkeySettings(keyName = "F12", alt = true),
+            )
         manager.save(initialConfig)
         manager.exportConfig(exportFile)
 

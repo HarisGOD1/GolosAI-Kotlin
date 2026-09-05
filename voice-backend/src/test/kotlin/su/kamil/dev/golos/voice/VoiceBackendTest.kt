@@ -69,6 +69,29 @@ class VoiceBackendTest {
     }
 
     @Test
+    fun `test ModelDownloader discovers bundled offline model file`() {
+        val tempDir = java.io.File.createTempFile("models_test_", "").apply {
+            delete()
+            mkdirs()
+        }
+        try {
+            val downloader = su.kamil.dev.golos.voice.download.ModelDownloader(modelsDir = tempDir)
+            val tinyModel = su.kamil.dev.golos.voice.download.WhisperModelInfo.AVAILABLE_MODELS[0]
+
+            assertFalse(downloader.isModelDownloaded(tinyModel))
+
+            // Simulate local cache populated
+            val fakeModelFile = java.io.File(tempDir, tinyModel.filename)
+            fakeModelFile.writeBytes(ByteArray(1024 * 1024 + 10))
+
+            assertTrue(downloader.isModelDownloaded(tinyModel))
+            assertEquals(fakeModelFile.absolutePath, downloader.getLocalModelFile(tinyModel).absolutePath)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `test WhisperBinaryManager returns candidate binary path`() {
         val manager = su.kamil.dev.golos.voice.download.WhisperBinaryManager()
         val bin = manager.findWhisperBinary()
@@ -98,5 +121,28 @@ class VoiceBackendTest {
 
         val cleaned = engine.cleanWhisperOutput(rawInput)
         assertEquals("This is a clean voice test.", cleaned)
+    }
+
+    @Test
+    fun `test MockSpeechToTextEngine transcribeFile`() = runBlocking {
+        val engine = MockSpeechToTextEngine(simulatedDelayMs = 5, predeterminedText = "Audio file text")
+        val tempFile = java.io.File.createTempFile("test_sample_", ".mp3")
+        try {
+            tempFile.writeBytes(ByteArray(50))
+            val result = engine.transcribeFile(tempFile)
+            assertEquals("Audio file text", result.text)
+            assertTrue(result.confidence > 0.9f)
+        } finally {
+            tempFile.delete()
+        }
+    }
+
+    @Test
+    fun `test WhisperCppEngine transcribeFile with missing file returns error result`() = runBlocking {
+        val engine = su.kamil.dev.golos.voice.engine.WhisperCppEngine(modelPath = "/fake/model.bin")
+        val missing = java.io.File("/nonexistent/path/missing.wav")
+        val result = engine.transcribeFile(missing)
+        assertTrue(result.text.contains("Error: Audio file not found"))
+        assertEquals(0.0f, result.confidence)
     }
 }
