@@ -6,7 +6,11 @@ import su.kamil.dev.golos.core.model.AudioDevice
 import su.kamil.dev.golos.core.ports.AudioCapturePort
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
-import javax.sound.sampled.*
+import javax.sound.sampled.AudioFormat
+import javax.sound.sampled.AudioSystem
+import javax.sound.sampled.DataLine
+import javax.sound.sampled.Line
+import javax.sound.sampled.TargetDataLine
 
 /**
  * Microphone audio capture implementation using standard Java Sound API (javax.sound.sampled).
@@ -23,13 +27,14 @@ class JavaSoundAudioCapture(
     private var activeLine: TargetDataLine? = null
     private val bufferStream = ByteArrayOutputStream()
 
+    // 16-bit PCM, signed, little-endian
     private val audioFormat =
         AudioFormat(
             sampleRate,
             sampleSizeInBits,
             channels,
-            true, // signed
-            false, // little-endian
+            true,
+            false,
         )
 
     override fun getAvailableDevices(): List<AudioDevice> {

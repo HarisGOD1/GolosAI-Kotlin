@@ -220,4 +220,33 @@ class DictationOrchestratorTest {
 
             orchestrator.stop()
         }
+
+    @Test
+    fun `test orchestrator stop cleanly resets state and unregisters hook`() =
+        runTest {
+            val stateMachine = DictationStateMachine()
+            val fakeAudioCapture = FakeAudioCapture()
+            val mockEngine = MockSpeechToTextEngine()
+            val fakeHotkeyHook = SimulatedHotkeyHook()
+            val fakeTextInjector = FakeTextInjector()
+
+            val orchestrator =
+                DictationOrchestrator(
+                    stateMachine = stateMachine,
+                    audioCapture = fakeAudioCapture,
+                    speechEngine = mockEngine,
+                    hotkeyHook = fakeHotkeyHook,
+                    textInjector = fakeTextInjector,
+                    scope = this,
+                )
+
+            orchestrator.start()
+            fakeHotkeyHook.triggerKeyDown()
+            assertEquals(DictationState.RECORDING, orchestrator.state.value)
+
+            orchestrator.stop()
+            assertEquals(DictationState.IDLE, orchestrator.state.value)
+            org.junit.jupiter.api.Assertions.assertFalse(fakeHotkeyHook.isRegistered)
+            org.junit.jupiter.api.Assertions.assertFalse(fakeAudioCapture.isCapturing())
+        }
 }

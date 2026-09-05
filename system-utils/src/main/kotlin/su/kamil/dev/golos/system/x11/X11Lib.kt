@@ -101,4 +101,9 @@ interface X11Lib : Library {
     ): Int
 
     fun XFlush(display: Pointer?): Int
+
+    fun XQueryKeymap(
+        display: Pointer?,
+        keys_return: ByteArray,
+    ): Int
 }

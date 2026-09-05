@@ -1,6 +1,9 @@
 package su.kamil.dev.golos.system
 
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import su.kamil.dev.golos.core.model.HotkeyConfig
 import su.kamil.dev.golos.core.model.InjectionConfig

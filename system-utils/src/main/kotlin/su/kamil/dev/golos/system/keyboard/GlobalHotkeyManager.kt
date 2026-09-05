@@ -9,18 +9,46 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.abs
 
 /**
  * Global push-to-talk hotkey manager supporting multi-key combinations and Linux X11 via JNA.
- * Automatically filters out X11 auto-repeat release events to prevent state flickering while holding keys.
+ * Uses XQueryKeymap hardware state verification and a complete 16-permutation modifier grab matrix
+ * (covering Mod5/ISO_Level3_Shift, NumLock, CapsLock, ScrollLock) to reliably capture hotkeys in unfocused windows
+ * without auto-repeat self-release artifacts.
  */
 class GlobalHotkeyManager : GlobalHotkeyHook {
+    companion object {
+        private const val MASK_SHIFT = 1
+        private const val MASK_LOCK = 2
+        private const val MASK_CTRL = 4
+        private const val MASK_MOD1 = 8
+        private const val MASK_MOD2 = 16
+        private const val MASK_MOD3 = 32
+        private const val MASK_MOD4 = 64
+        private const val MASK_MOD5 = 128
+        private const val ANY_MODIFIER = 0x8000
+        private const val EVENT_KEY_PRESS = 2
+        private const val EVENT_KEY_RELEASE = 3
+        private const val BITS_PER_BYTE = 8
+        private const val EVENT_BUFFER_BYTES = 256
+        private const val KEYMAP_BYTES = 32
+        private const val DEBOUNCE_DELAY_MS = 35L
+        private const val LOOP_SLEEP_MS = 20L
+        private const val THREAD_JOIN_MS = 300L
+        private const val SUPERVISOR_INTERVAL_TICKS = 2
+        private const val F_KEY_VK_OFFSET = 111
+        private const val BYTE_MASK = 0xFF
+        private const val COMBINATIONS_COUNT = 16
+        private const val BIT_LOCK = 1
+        private const val BIT_MOD2 = 2
+        private const val BIT_MOD3 = 4
+        private const val BIT_MOD5 = 8
+    }
+
     private val logger = LoggerFactory.getLogger(GlobalHotkeyManager::class.java)
     private val isHookActive = AtomicBoolean(false)
     private var listenerThread: Thread? = null
 
-    // Debounce scheduler to eliminate X11 key auto-repeat flickering
     private val debounceScheduler =
         Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "Golos-PTT-Debounce").apply { isDaemon = true }
@@ -51,6 +79,46 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
             }
         }
 
+    private fun resolveKeysym(
+        x11: X11Lib,
+        rawName: String,
+    ): Long {
+        val clean = rawName.trim()
+        val candidates =
+            mutableListOf(
+                clean,
+                clean.lowercase(),
+                clean.uppercase(),
+            )
+
+        when (clean.lowercase()) {
+            "enter" -> candidates.add("Return")
+            "esc" -> candidates.add("Escape")
+            "space", " " -> candidates.add("space")
+            "backspace", "back space" -> candidates.add("BackSpace")
+            "caps lock", "capslock" -> candidates.add("Caps_Lock")
+            "page up", "pageup" -> candidates.add("Page_Up")
+            "page down", "pagedown" -> candidates.add("Page_Down")
+            "print screen", "prntscrn" -> candidates.add("Print")
+            "scroll lock" -> candidates.add("Scroll_Lock")
+            "num lock" -> candidates.add("Num_Lock")
+        }
+
+        var result = 0L
+        for (candidate in candidates) {
+            val sym = x11.XStringToKeysym(candidate)
+            if (sym != 0L) {
+                result = sym
+                break
+            }
+        }
+
+        if (result == 0L && clean.length == 1) {
+            result = clean[0].code.toLong()
+        }
+        return result
+    }
+
     private fun startLinuxX11Listener(
         x11: X11Lib,
         config: HotkeyConfig,
@@ -66,82 +134,62 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                     return@Thread
                 }
 
+                var grabbedKeycode = 0
+                var rootWindow = 0L
+
                 try {
-                    // Install a non-fatal error handler to ignore BadAccess if a modifier or key is grabbed by another client
                     x11.XSetErrorHandler { _, _ -> 0 }
+                    rootWindow = x11.XDefaultRootWindow(display)
 
-                    val root = x11.XDefaultRootWindow(display)
-
-                    // Resolve keycode: try exact, lowercase, uppercase, ASCII
-                    var keysym = x11.XStringToKeysym(config.keyName)
-                    if (keysym == 0L) keysym = x11.XStringToKeysym(config.keyName.lowercase())
-                    if (keysym == 0L) keysym = x11.XStringToKeysym(config.keyName.uppercase())
-                    if (keysym == 0L && config.keyName.length == 1) {
-                        keysym = config.keyName[0].code.toLong()
-                    }
-
-                    var keycode = x11.XKeysymToKeycode(display, keysym).toInt() and 0xFF
-                    if (keycode == 0) {
-                        val lowerSym = x11.XStringToKeysym(config.keyName.lowercase())
-                        if (lowerSym != 0L) {
-                            keycode = x11.XKeysymToKeycode(display, lowerSym).toInt() and 0xFF
+                    val keysym = resolveKeysym(x11, config.keyName)
+                    grabbedKeycode = x11.XKeysymToKeycode(display, keysym).toInt() and BYTE_MASK
+                    if (grabbedKeycode == 0 && config.keyCode != 0) {
+                        val fallbackSym = x11.XStringToKeysym("F" + (config.keyCode - F_KEY_VK_OFFSET))
+                        if (fallbackSym != 0L) {
+                            grabbedKeycode = x11.XKeysymToKeycode(display, fallbackSym).toInt() and BYTE_MASK
                         }
                     }
-                    if (keycode == 0) {
-                        val upperSym = x11.XStringToKeysym(config.keyName.uppercase())
-                        if (upperSym != 0L) {
-                            keycode = x11.XKeysymToKeycode(display, upperSym).toInt() and 0xFF
-                        }
-                    }
-                    if (keycode == 0 && config.keyCode != 0) {
-                        keycode = config.keyCode and 0xFF
-                    }
 
-                    if (keycode == 0) {
+                    if (grabbedKeycode == 0) {
                         logger.error("Could not resolve X11 keycode for key '{}'", config.keyName)
                         return@Thread
                     }
 
-                    // X11 Modifier masks:
-                    // Shift: 1 (ShiftMask)
-                    // Lock: 2 (LockMask / CapsLock)
-                    // Control: 4 (ControlMask)
-                    // Mod1: 8 (Mod1Mask / Alt)
-                    // Mod2: 16 (Mod2Mask / NumLock)
-                    // Mod4: 64 (Mod4Mask / Super/Windows)
                     var baseModifier = 0
-                    if (config.shift) baseModifier = baseModifier or 1
-                    if (config.ctrl) baseModifier = baseModifier or 4
-                    if (config.alt) baseModifier = baseModifier or 8
-                    if (config.meta) baseModifier = baseModifier or 64
+                    if (config.shift) baseModifier = baseModifier or MASK_SHIFT
+                    if (config.ctrl) baseModifier = baseModifier or MASK_CTRL
+                    if (config.alt) baseModifier = baseModifier or MASK_MOD1
+                    if (config.meta) baseModifier = baseModifier or MASK_MOD4
 
-                    val capsLockMask = 2
-                    val numLockMask = 16
-
-                    val masksToGrab =
-                        if (baseModifier == 0) {
-                            listOf(0, capsLockMask, numLockMask, capsLockMask or numLockMask)
-                        } else {
-                            listOf(
-                                baseModifier,
-                                baseModifier or capsLockMask,
-                                baseModifier or numLockMask,
-                                baseModifier or capsLockMask or numLockMask,
-                            )
+                    val lockMasks =
+                        (0 until COMBINATIONS_COUNT).map { i ->
+                            var mask = 0
+                            if ((i and BIT_LOCK) != 0) mask = mask or MASK_LOCK
+                            if ((i and BIT_MOD2) != 0) mask = mask or MASK_MOD2
+                            if ((i and BIT_MOD3) != 0) mask = mask or MASK_MOD3
+                            if ((i and BIT_MOD5) != 0) mask = mask or MASK_MOD5
+                            mask
                         }
+                    val masksToGrab = lockMasks.map { baseModifier or it }.distinct()
 
+                    x11.XUngrabKey(display, grabbedKeycode, ANY_MODIFIER, rootWindow)
                     for (mask in masksToGrab) {
-                        x11.XGrabKey(display, keycode, mask, root, 0, 1, 1)
+                        x11.XGrabKey(display, grabbedKeycode, mask, rootWindow, 0, 1, 1)
                     }
                     x11.XFlush(display)
                     x11.XSync(display, false)
 
                     logger.info(
-                        "Registered global hotkey '{}' (keycode {}, modifiers 0x{}) on X11 root window",
-                        config.displayText, keycode, Integer.toHexString(baseModifier),
+                        "Registered unfocused global hotkey '{}' (keycode {}, base mod 0x{}, grabbed {} masks)",
+                        config.displayText,
+                        grabbedKeycode,
+                        Integer.toHexString(baseModifier),
+                        masksToGrab.size,
                     )
 
-                    val eventMemory = Memory(256)
+                    val eventMemory = Memory(EVENT_BUFFER_BYTES.toLong())
+                    val keysReturn = ByteArray(KEYMAP_BYTES)
+                    var pollCounter = 0
 
                     while (isHookActive.get()) {
                         if (x11.XPending(display) > 0) {
@@ -149,56 +197,73 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                             val eventType = eventMemory.getInt(0)
 
                             when (eventType) {
-                                2 -> { // KeyPress
-                                    // Cancel any pending debounced release
+                                EVENT_KEY_PRESS -> {
                                     synchronized(this) {
                                         pendingReleaseJob?.cancel(false)
                                         pendingReleaseJob = null
                                     }
-
                                     if (isKeyCurrentlyDown.compareAndSet(false, true)) {
-                                        logger.debug("Global hotkey KeyPress triggered: {}", config.displayText)
+                                        logger.debug("Global hotkey KeyPress confirmed: {}", config.displayText)
                                         onKeyDown()
                                     }
                                 }
-                                3 -> { // KeyRelease
-                                    // Check if next event in X11 queue is an auto-repeat KeyPress
-                                    var isAutoRepeat = false
-                                    if (x11.XPending(display) > 0) {
-                                        val peekMemory = Memory(256)
-                                        x11.XPeekEvent(display, peekMemory)
-                                        val peekType = peekMemory.getInt(0)
-                                        if (peekType == 2) {
-                                            val curKeycode = eventMemory.getInt(84)
-                                            val nextKeycode = peekMemory.getInt(84)
-                                            val curTime = eventMemory.getLong(56)
-                                            val nextTime = peekMemory.getLong(56)
-                                            if (curKeycode == nextKeycode && abs(nextTime - curTime) <= 50) {
-                                                isAutoRepeat = true
-                                                // Consume the auto-repeat KeyPress so it doesn't re-trigger
-                                                x11.XNextEvent(display, peekMemory)
-                                            }
-                                        }
-                                    }
+                                EVENT_KEY_RELEASE -> {
+                                    x11.XQueryKeymap(display, keysReturn)
+                                    val byteIdx = grabbedKeycode / BITS_PER_BYTE
+                                    val bitMask = 1 shl (grabbedKeycode % BITS_PER_BYTE)
+                                    val isPhysicallyDown = (keysReturn[byteIdx].toInt() and bitMask) != 0
 
-                                    if (!isAutoRepeat) {
-                                        // Debounce release by 60ms to eliminate any residual hardware/X11 repeat bounce
+                                    if (isPhysicallyDown) {
+                                        logger.trace("X11 auto-repeat release ignored via XQueryKeymap")
+                                    } else {
                                         synchronized(this) {
                                             pendingReleaseJob?.cancel(false)
                                             pendingReleaseJob =
                                                 debounceScheduler.schedule({
-                                                    if (isKeyCurrentlyDown.compareAndSet(true, false)) {
-                                                        logger.debug("Global hotkey KeyRelease confirmed: {}", config.displayText)
-                                                        onKeyUp()
+                                                    val verifyKeys = ByteArray(KEYMAP_BYTES)
+                                                    x11.XQueryKeymap(display, verifyKeys)
+                                                    val verifyByte = grabbedKeycode / BITS_PER_BYTE
+                                                    val verifyBit = 1 shl (grabbedKeycode % BITS_PER_BYTE)
+                                                    val stillDown = (verifyKeys[verifyByte].toInt() and verifyBit) != 0
+                                                    if (!stillDown) {
+                                                        if (isKeyCurrentlyDown.compareAndSet(true, false)) {
+                                                            logger.debug(
+                                                                "Global hotkey KeyRelease confirmed: {}",
+                                                                config.displayText,
+                                                            )
+                                                            onKeyUp()
+                                                        }
                                                     }
-                                                }, 60, TimeUnit.MILLISECONDS)
+                                                }, DEBOUNCE_DELAY_MS, TimeUnit.MILLISECONDS)
                                         }
                                     }
                                 }
                             }
                         } else {
+                            if (isKeyCurrentlyDown.get()) {
+                                pollCounter++
+                                if (pollCounter >= SUPERVISOR_INTERVAL_TICKS) {
+                                    pollCounter = 0
+                                    x11.XQueryKeymap(display, keysReturn)
+                                    val sByte = grabbedKeycode / BITS_PER_BYTE
+                                    val sBit = 1 shl (grabbedKeycode % BITS_PER_BYTE)
+                                    val isPhysicallyDown = (keysReturn[sByte].toInt() and sBit) != 0
+                                    if (!isPhysicallyDown) {
+                                        if (isKeyCurrentlyDown.compareAndSet(true, false)) {
+                                            logger.debug(
+                                                "Supervisor: key physically released: {}",
+                                                config.displayText,
+                                            )
+                                            onKeyUp()
+                                        }
+                                    }
+                                }
+                            } else {
+                                pollCounter = 0
+                            }
+
                             try {
-                                Thread.sleep(15)
+                                Thread.sleep(LOOP_SLEEP_MS)
                             } catch (_: InterruptedException) {
                                 break
                             }
@@ -209,7 +274,14 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                         logger.error("Error in X11 global hotkey event loop", e)
                     }
                 } finally {
-                    x11.XCloseDisplay(display)
+                    try {
+                        if (grabbedKeycode != 0 && rootWindow != 0L) {
+                            x11.XUngrabKey(display, grabbedKeycode, ANY_MODIFIER, rootWindow)
+                            x11.XFlush(display)
+                        }
+                        x11.XCloseDisplay(display)
+                    } catch (_: Throwable) {
+                    }
                 }
             }, "Golos-GlobalHotkeyThread").apply {
                 isDaemon = true
@@ -225,6 +297,10 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
             }
             isKeyCurrentlyDown.set(false)
             listenerThread?.interrupt()
+            try {
+                listenerThread?.join(THREAD_JOIN_MS)
+            } catch (_: InterruptedException) {
+            }
             listenerThread = null
             logger.info("Unregistered global hotkey hook")
         }
