@@ -149,4 +149,53 @@ class VoiceBackendTest {
             assertTrue(result.text.contains("Error: Audio file not found"))
             assertEquals(0.0f, result.confidence)
         }
+
+    @Test
+    fun `test SpeechPostProcessor punctuation commands and spacing`() {
+        val pp = su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor()
+        val raw = "задача выполнена точка осталось согласовать запятая затем подписать восклицательный знак"
+        val res = pp.postProcess(raw)
+        assertEquals("Задача выполнена. Осталось согласовать, затем подписать!", res)
+    }
+
+    @Test
+    fun `test SpeechPostProcessor filler words and repetitions removal`() {
+        val pp = su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor()
+        val raw = "ну короче нужно нужно проверить этот блок"
+        val res = pp.postProcess(raw)
+        assertEquals("Нужно проверить этот блок", res)
+    }
+
+    @Test
+    fun `test SpeechPostProcessor hallucination filter`() {
+        val pp = su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor()
+        val raw = "Редактор субтитров А.Синецкая Корректор А.Сухиашвили"
+        val res = pp.postProcess(raw)
+        assertEquals("", res)
+    }
+
+    @Test
+    fun `test SpeechPostProcessor lists and dictionary substitution`() {
+        val pp = su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor()
+        val raw = "открой жуни тесты в селектил"
+        val res = pp.postProcess(raw)
+        assertEquals("Открой JUnit тесты в Селектел", res)
+    }
+
+    @Test
+    fun `test WhisperCppEngine transcribe real stand audio if present`() =
+        runBlocking {
+            val standFile = java.io.File(System.getProperty("user.home"), "stand_audio/F-01-чистая-1.wav")
+            val modelFile = java.io.File("models/ggml-tiny.bin")
+            if (standFile.exists() && modelFile.exists()) {
+                val engine =
+                    su.kamil.dev.golos.voice.engine.WhisperCppEngine(
+                        modelPath = modelFile.absolutePath,
+                        language = "ru",
+                    )
+                val result = engine.transcribeFile(standFile)
+                assertTrue(result.text.isNotBlank())
+                assertTrue(result.text.lowercase().contains("обсудим") || result.text.lowercase().contains("архитектур"))
+            }
+        }
 }

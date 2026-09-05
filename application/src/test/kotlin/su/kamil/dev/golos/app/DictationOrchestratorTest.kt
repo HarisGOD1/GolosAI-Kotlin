@@ -23,7 +23,7 @@ class DictationOrchestratorTest {
         var startCount = 0
         var stopCount = 0
         var capturing = false
-        var returnChunk: AudioChunk? = AudioChunk(ByteArray(1600) { 0x40 })
+        var returnChunk: AudioChunk? = AudioChunk(ByteArray(16000) { 0x40 })
 
         override fun getAvailableDevices(): List<AudioDevice> = emptyList()
 
@@ -184,6 +184,39 @@ class DictationOrchestratorTest {
             assertEquals(DictationState.IDLE, orchestrator.state.value)
             assertEquals(1, fakeTextInjector.injected.size)
             assertEquals("Word1 Word2 Word3", fakeTextInjector.injected[0])
+
+            orchestrator.stop()
+        }
+
+    @Test
+    fun `test short keypress less than 200ms is ignored under criterion D-10`() =
+        runTest {
+            val stateMachine = DictationStateMachine()
+            val fakeAudioCapture = FakeAudioCapture()
+            fakeAudioCapture.returnChunk = AudioChunk(ByteArray(1600) { 0x40 }) // ~50ms audio (< 200ms)
+            val mockEngine = MockSpeechToTextEngine(simulatedDelayMs = 0, predeterminedText = "Should be ignored")
+            val fakeHotkeyHook = SimulatedHotkeyHook()
+            val fakeTextInjector = FakeTextInjector()
+
+            val orchestrator =
+                DictationOrchestrator(
+                    stateMachine = stateMachine,
+                    audioCapture = fakeAudioCapture,
+                    speechEngine = mockEngine,
+                    hotkeyHook = fakeHotkeyHook,
+                    textInjector = fakeTextInjector,
+                    scope = this,
+                )
+
+            orchestrator.start()
+            fakeHotkeyHook.triggerKeyDown()
+            assertEquals(DictationState.RECORDING, orchestrator.state.value)
+            fakeHotkeyHook.triggerKeyUp()
+
+            testScheduler.advanceUntilIdle()
+            assertEquals(DictationState.IDLE, orchestrator.state.value)
+            // Empty replica should NOT be created or injected
+            assertEquals(0, fakeTextInjector.injected.size)
 
             orchestrator.stop()
         }

@@ -141,13 +141,12 @@ class ActiveWindowTextInjector(
         val display = x11.XOpenDisplay(null) ?: return true
 
         return try {
-            val root = x11.XDefaultRootWindow(display)
             val focusWinMem = Memory(8)
             val revertToMem = Memory(4)
             x11.XGetInputFocus(display, focusWinMem, revertToMem)
             val targetWin = focusWinMem.getLong(0)
-            // 0 = None, 1 = PointerRoot
-            targetWin > 1L && targetWin != root
+            // 0 = None. In X11/Xwayland, 1 = PointerRoot and >1 = window XID. Both receive active input.
+            targetWin != 0L
         } catch (_: Exception) {
             true
         } finally {

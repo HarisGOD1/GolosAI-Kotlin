@@ -952,11 +952,13 @@ class PreferencesDialog(
         val oldCallback = orchestrator.onTranscriptionCompleted
         orchestrator.onTranscriptionCompleted = { result, engine ->
             oldCallback?.invoke(result, engine)
-            historyManager.addEntry(
-                text = result.text,
-                durationMs = result.durationMs,
-                engine = engine.displayName,
-            )
+            if (oldCallback == null) {
+                historyManager.addEntry(
+                    text = result.text,
+                    durationMs = result.durationMs,
+                    engine = engine.displayName,
+                )
+            }
             SwingUtilities.invokeLater {
                 refreshHistoryList()
             }

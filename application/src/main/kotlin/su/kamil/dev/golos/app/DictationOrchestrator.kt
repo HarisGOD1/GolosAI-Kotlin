@@ -121,12 +121,12 @@ class DictationOrchestrator(
 
     private suspend fun startLiveStreamingLoop() {
         while (stateMachine.state.value == DictationState.RECORDING) {
-            kotlinx.coroutines.delay(800)
+            kotlinx.coroutines.delay(400)
             if (stateMachine.state.value != DictationState.RECORDING) break
 
             val currentBytes =
                 synchronized(liveAudioStream) {
-                    if (liveAudioStream.size() >= 16000 * 2) {
+                    if (liveAudioStream.size() >= 16000) {
                         liveAudioStream.toByteArray()
                     } else {
                         null
@@ -179,6 +179,12 @@ class DictationOrchestrator(
             scope.launch {
                 try {
                     if (recordedAudio != null && recordedAudio.samples.isNotEmpty()) {
+                        // Criterion D-10: A delay of less than 200 ms does not create an empty replica
+                        if (recordedAudio.durationMs < 200) {
+                            logger.info("Push-to-talk press too short ({} ms < 200 ms); ignoring empty replica.", recordedAudio.durationMs)
+                            return@launch
+                        }
+
                         logger.info(
                             "Captured {} ms audio. Transcribing with '{}'...",
                             recordedAudio.durationMs,

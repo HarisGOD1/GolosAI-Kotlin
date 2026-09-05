@@ -29,7 +29,15 @@ class MockSpeechToTextEngine(
             )
         }
 
-        val text = predeterminedText ?: "Hello, this is simulated GolosAI speech-to-text dictation."
+        val baseText = predeterminedText ?: "Hello, this is simulated GolosAI speech-to-text dictation on the fly."
+        val text =
+            if (predeterminedText == null && audio.durationMs > 0) {
+                val words = baseText.split(Regex("\\s+"))
+                val count = ((audio.durationMs / 300L) + 1).coerceAtMost(words.size.toLong()).toInt()
+                words.take(count).joinToString(" ")
+            } else {
+                baseText
+            }
         return TranscriptionResult(
             text = text,
             durationMs = simulatedDelayMs,

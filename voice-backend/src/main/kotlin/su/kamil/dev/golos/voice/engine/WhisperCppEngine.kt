@@ -40,8 +40,21 @@ class WhisperCppEngine(
             Result.success(Unit)
         }
 
+    private val postProcessor = su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor()
+
     override suspend fun transcribe(audio: AudioChunk): TranscriptionResult =
         withContext(Dispatchers.IO) {
+            val rms = AudioPreprocessor.calculateRms(audio)
+            if (rms < 0.003f && audio.durationMs > 0) {
+                logger.info("Audio RMS ({}) below audibility threshold; skipping recognition (silence).", rms)
+                return@withContext TranscriptionResult(
+                    text = "",
+                    durationMs = 0L,
+                    isFinal = true,
+                    confidence = 1.0f,
+                )
+            }
+
             val standardChunk = AudioPreprocessor.toWhisperStandard(audio)
             val wavBytes = AudioPreprocessor.createWavBytes(standardChunk)
 
@@ -85,6 +98,8 @@ class WhisperCppEngine(
                     "-f", audioFile.absolutePath,
                     "-t", threads.toString(),
                     "-l", language,
+                    "-bo", "1",
+                    "-bs", "1",
                     "--no-timestamps",
                     "--no-prints",
                 )
@@ -138,10 +153,11 @@ class WhisperCppEngine(
             }
 
             val cleanedText = cleanWhisperOutput(rawOutput)
+            val postProcessed = postProcessor.postProcess(cleanedText)
             val duration = System.currentTimeMillis() - startTime
 
             TranscriptionResult(
-                text = cleanedText,
+                text = postProcessed,
                 durationMs = duration,
                 isFinal = true,
                 confidence = 0.95f,
