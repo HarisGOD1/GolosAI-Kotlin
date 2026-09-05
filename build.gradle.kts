@@ -31,4 +31,15 @@ subprojects {
     tasks.withType<Test> {
         useJUnitPlatform()
     }
+
+    tasks.withType<Jar> {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
+}
+
+tasks.register("testAll") {
+    group = "verification"
+    description = "Runs all unit and integration tests across all modules in one command"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "test" } })
 }

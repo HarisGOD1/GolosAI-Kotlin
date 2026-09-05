@@ -5,34 +5,43 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import su.kamil.dev.golos.app.DictationOrchestrator
-import su.kamil.dev.golos.core.model.AudioDevice
-import su.kamil.dev.golos.core.model.DictationState
-import su.kamil.dev.golos.core.model.HotkeyConfig
-import su.kamil.dev.golos.core.model.InjectionConfig
-import su.kamil.dev.golos.core.model.InsertionMode
+import su.kamil.dev.golos.app.config.SettingsManager
+import su.kamil.dev.golos.app.history.HistoryManager
+import su.kamil.dev.golos.core.model.*
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
+import su.kamil.dev.golos.system.autostart.AutoStartManager
 import su.kamil.dev.golos.voice.download.ModelDownloader
 import su.kamil.dev.golos.voice.download.WhisperBinaryManager
 import su.kamil.dev.golos.voice.download.WhisperModelInfo
 import su.kamil.dev.golos.voice.engine.InferenceDevice
 import su.kamil.dev.golos.voice.engine.WhisperCppEngine
 import java.awt.*
+import java.awt.datatransfer.StringSelection
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.*
 import javax.swing.border.CompoundBorder
 import javax.swing.border.EmptyBorder
+import javax.swing.border.LineBorder
 import javax.swing.border.TitledBorder
+import javax.swing.filechooser.FileNameExtensionFilter
 
 /**
- * Swing Preferences and Status Window for GolosAI.
- * Organized into tabs for General Dictation settings and Whisper.cpp Model/Hardware management.
+ * Swing Preferences, Status, and History Window for GolosAI.
+ * Configured with YAML settings persistence, hotkey recorder, model management,
+ * and dictation history with one-click copy.
  */
 class PreferencesDialog(
     private val orchestrator: DictationOrchestrator,
-    private val availableEngines: List<SpeechToTextEngine>
+    private val availableEngines: List<SpeechToTextEngine>,
+    private val settingsManager: SettingsManager = SettingsManager(),
+    private val historyManager: HistoryManager = HistoryManager(),
+    private val autoStartManager: AutoStartManager = AutoStartManager()
 ) : JFrame("GolosAI - Speech to Text Assistant") {
 
     private val statusLabel = JLabel("Status: IDLE", SwingConstants.CENTER)
@@ -48,17 +57,28 @@ class PreferencesDialog(
     private val keyField = JTextField("F8", 6)
     private val activeHotkeyLabel = JLabel(orchestrator.currentHotkey.displayText)
     private val applyHotkeyBtn = JButton("Apply")
+    private val recordBtn = JButton("🎙️ Record Shortcut (Click & Press Keys)")
 
     // Privacy & Insertion Controls
     private val insertionModeCombo = JComboBox(arrayOf("Direct Typing (Privacy-preserving)", "Clipboard Paste (Ctrl+V)"))
     private val copyClipboardCheck = JCheckBox("Save transcription to clipboard", false)
     private val fallbackClipboardCheck = JCheckBox("Save to clipboard if no active field focused", true)
 
+    // Autostart Control
+    private val autostartCheck = JCheckBox("Start GolosAI automatically on system login", autoStartManager.isAutoStartEnabled())
+
     // Whisper & Model Management
     private val whisperEngine = availableEngines.filterIsInstance<WhisperCppEngine>().firstOrNull()
     private val modelDownloader = ModelDownloader()
     private val binaryManager = WhisperBinaryManager()
 
+    // Binary Controls
+    private val binaryStatusLabel = JLabel("Checking binary...")
+    private val binaryPathField = JTextField(whisperEngine?.binaryPath ?: "", 18)
+    private val downloadBinaryBtn = JButton("Download whisper-cli")
+    private val browseBinaryBtn = JButton("Browse...")
+
+    // Model Controls
     private val modelCombo = JComboBox<String>()
     private val modelStatusLabel = JLabel("Status: Checking...")
     private val downloadModelBtn = JButton("Download Model")
@@ -76,23 +96,31 @@ class PreferencesDialog(
         InferenceDevice.GPU.displayName
     ))
 
+    // History UI components
+    private val historyListPanel = JPanel()
+    private val historySearchField = JTextField(15)
+    private val historyCountLabel = JLabel("Total: 0 entries")
+
     private val coroutineScope = CoroutineScope(Dispatchers.Default + Job())
     private var availableDevices: List<AudioDevice> = emptyList()
 
     init {
         initUi()
+        loadInitialConfig()
         observeState()
+        wireHistoryListener()
     }
 
     private fun initUi() {
         defaultCloseOperation = HIDE_ON_CLOSE
-        setSize(620, 580)
+        setSize(680, 680)
+        setMinimumSize(Dimension(580, 520))
         setLocationRelativeTo(null)
         layout = BorderLayout(10, 10)
 
         // Header Panel
         val headerPanel = JPanel(BorderLayout(8, 8))
-        headerPanel.border = EmptyBorder(14, 16, 6, 16)
+        headerPanel.border = EmptyBorder(12, 16, 4, 16)
         val titleLabel = JLabel("GolosAI Dictation Assistant")
         titleLabel.font = Font(Font.SANS_SERIF, Font.BOLD, 18)
         headerPanel.add(titleLabel, BorderLayout.NORTH)
@@ -109,11 +137,12 @@ class PreferencesDialog(
         val tabbedPane = JTabbedPane()
         tabbedPane.addTab("Dictation & Hotkeys", createGeneralTab())
         tabbedPane.addTab("Whisper Models & Hardware", createWhisperTab())
+        tabbedPane.addTab("📜 History", createHistoryTab())
         add(tabbedPane, BorderLayout.CENTER)
 
         // Bottom Action Panel
-        val actionPanel = JPanel(BorderLayout(10, 10))
-        actionPanel.border = EmptyBorder(8, 16, 14, 16)
+        val actionPanel = JPanel(BorderLayout(8, 8))
+        actionPanel.border = EmptyBorder(4, 16, 12, 16)
 
         pttButton.font = Font(Font.SANS_SERIF, Font.BOLD, 14)
         pttButton.preferredSize = Dimension(200, 46)
@@ -128,11 +157,70 @@ class PreferencesDialog(
                 orchestrator.onPushToTalkReleased()
             }
         })
-
         actionPanel.add(pttButton, BorderLayout.CENTER)
+
+        // Configuration Toolbar (Reset, Export, Import)
+        val configBar = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
+        val resetBtn = JButton("↺ Reset to Defaults")
+        val exportBtn = JButton("📤 Export Settings...")
+        val importBtn = JButton("📥 Import Settings...")
+
+        resetBtn.toolTipText = "Reset all settings to initial defaults"
+        exportBtn.toolTipText = "Export settings to YAML file"
+        importBtn.toolTipText = "Import settings from YAML file"
+
+        resetBtn.addActionListener {
+            val confirm = JOptionPane.showConfirmDialog(
+                this,
+                "Reset all settings to default values?",
+                "Confirm Reset",
+                JOptionPane.YES_NO_OPTION
+            )
+            if (confirm == JOptionPane.YES_OPTION) {
+                val defaultConfig = settingsManager.resetToDefaults()
+                applyConfigToUi(defaultConfig)
+                JOptionPane.showMessageDialog(this, "Settings have been reset to defaults.", "Reset", JOptionPane.INFORMATION_MESSAGE)
+            }
+        }
+
+        exportBtn.addActionListener {
+            val chooser = JFileChooser()
+            chooser.dialogTitle = "Export Settings to YAML"
+            chooser.selectedFile = File("golos_settings.yaml")
+            chooser.fileFilter = FileNameExtensionFilter("YAML Configuration (*.yaml, *.yml)", "yaml", "yml")
+            if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                var f = chooser.selectedFile
+                if (!f.name.endsWith(".yaml") && !f.name.endsWith(".yml")) {
+                    f = File(f.parentFile, f.name + ".yaml")
+                }
+                saveCurrentConfig()
+                settingsManager.exportConfig(f)
+                JOptionPane.showMessageDialog(this, "Settings exported to:\n${f.absolutePath}", "Export Successful", JOptionPane.INFORMATION_MESSAGE)
+            }
+        }
+
+        importBtn.addActionListener {
+            val chooser = JFileChooser()
+            chooser.dialogTitle = "Import Settings from YAML"
+            chooser.fileFilter = FileNameExtensionFilter("YAML Configuration (*.yaml, *.yml)", "yaml", "yml")
+            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                try {
+                    val imported = settingsManager.importConfig(chooser.selectedFile)
+                    applyConfigToUi(imported)
+                    JOptionPane.showMessageDialog(this, "Settings successfully imported!", "Import Successful", JOptionPane.INFORMATION_MESSAGE)
+                } catch (ex: Exception) {
+                    JOptionPane.showMessageDialog(this, "Failed to import settings: ${ex.message}", "Error", JOptionPane.ERROR_MESSAGE)
+                }
+            }
+        }
+
+        configBar.add(resetBtn)
+        configBar.add(exportBtn)
+        configBar.add(importBtn)
+        actionPanel.add(configBar, BorderLayout.SOUTH)
+
         add(actionPanel, BorderLayout.SOUTH)
 
-        // Initial setup
         syncInjectionConfig()
         renderStatus(orchestrator.state.value)
     }
@@ -142,7 +230,7 @@ class PreferencesDialog(
         panel.border = EmptyBorder(12, 14, 12, 14)
         val gbc = GridBagConstraints().apply {
             fill = GridBagConstraints.HORIZONTAL
-            insets = Insets(6, 6, 6, 6)
+            insets = Insets(5, 6, 5, 6)
             gridx = 0
             gridy = 0
             weightx = 0.3
@@ -157,6 +245,7 @@ class PreferencesDialog(
             val idx = micCombo.selectedIndex
             if (idx in availableDevices.indices) {
                 orchestrator.selectedDevice = availableDevices[idx]
+                saveCurrentConfig()
             }
         }
         panel.add(micCombo, gbc)
@@ -173,6 +262,7 @@ class PreferencesDialog(
             val idx = engineCombo.selectedIndex
             if (idx in availableEngines.indices) {
                 orchestrator.speechEngine = availableEngines[idx]
+                saveCurrentConfig()
             }
         }
         panel.add(engineCombo, gbc)
@@ -197,8 +287,6 @@ class PreferencesDialog(
         gbc.weightx = 0.7
 
         val hotkeyOuterPanel = JPanel(BorderLayout(4, 4))
-
-        val recordBtn = JButton("🎙️ Record Shortcut (Click & Press Keys)")
         recordBtn.font = Font(Font.SANS_SERIF, Font.BOLD, 12)
         recordBtn.isFocusPainted = false
 
@@ -255,6 +343,7 @@ class PreferencesDialog(
                         renderStatus(orchestrator.state.value)
                         recordBtn.text = "Recorded: ${config.displayText} (Click to change)"
                         recordBtn.background = null
+                        saveCurrentConfig()
                     } else {
                         recordBtn.text = "🎙️ Record Shortcut (Click & Press Keys)"
                         recordBtn.background = null
@@ -294,6 +383,7 @@ class PreferencesDialog(
                 activeHotkeyLabel.text = newConfig.displayText
                 activeHotkeyLabel.foreground = Color(0, 128, 0)
                 renderStatus(orchestrator.state.value)
+                saveCurrentConfig()
                 JOptionPane.showMessageDialog(
                     this,
                     "Hotkey updated to: ${newConfig.displayText}",
@@ -321,7 +411,10 @@ class PreferencesDialog(
         panel.add(JLabel("Insertion Mode:"), gbc)
         gbc.gridx = 1
         gbc.weightx = 0.7
-        insertionModeCombo.addActionListener { syncInjectionConfig() }
+        insertionModeCombo.addActionListener {
+            syncInjectionConfig()
+            saveCurrentConfig()
+        }
         panel.add(insertionModeCombo, gbc)
 
         // 6. Clipboard Privacy
@@ -332,11 +425,31 @@ class PreferencesDialog(
         gbc.gridx = 1
         gbc.weightx = 0.7
         val privacyPanel = JPanel(GridLayout(2, 1, 2, 2))
-        copyClipboardCheck.addActionListener { syncInjectionConfig() }
-        fallbackClipboardCheck.addActionListener { syncInjectionConfig() }
+        copyClipboardCheck.addActionListener {
+            syncInjectionConfig()
+            saveCurrentConfig()
+        }
+        fallbackClipboardCheck.addActionListener {
+            syncInjectionConfig()
+            saveCurrentConfig()
+        }
         privacyPanel.add(copyClipboardCheck)
         privacyPanel.add(fallbackClipboardCheck)
         panel.add(privacyPanel, gbc)
+
+        // 7. System Autostart
+        gbc.gridx = 0
+        gbc.gridy = 6
+        gbc.weightx = 0.3
+        panel.add(JLabel("System Startup:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+        autostartCheck.addActionListener {
+            val enabled = autostartCheck.isSelected
+            autoStartManager.setAutoStart(enabled)
+            saveCurrentConfig()
+        }
+        panel.add(autostartCheck, gbc)
 
         return panel
     }
@@ -346,24 +459,71 @@ class PreferencesDialog(
         panel.border = EmptyBorder(12, 14, 12, 14)
         val gbc = GridBagConstraints().apply {
             fill = GridBagConstraints.HORIZONTAL
-            insets = Insets(6, 6, 6, 6)
+            insets = Insets(5, 6, 5, 6)
             gridx = 0
             gridy = 0
             weightx = 0.3
         }
 
-        // 1. Model Selector
+        // 1. Whisper Executable Management
+        panel.add(JLabel("Whisper Executable:"), gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.7
+
+        val binBox = JPanel(BorderLayout(4, 4))
+        val binInputRow = JPanel(BorderLayout(4, 0))
+        binInputRow.add(binaryPathField, BorderLayout.CENTER)
+
+        val binBtnRow = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0))
+        binBtnRow.add(browseBinaryBtn)
+        binBtnRow.add(downloadBinaryBtn)
+        binInputRow.add(binBtnRow, BorderLayout.EAST)
+        binBox.add(binInputRow, BorderLayout.NORTH)
+        binBox.add(binaryStatusLabel, BorderLayout.SOUTH)
+
+        browseBinaryBtn.addActionListener {
+            val chooser = JFileChooser()
+            chooser.dialogTitle = "Select whisper-cli or main executable"
+            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                val f = chooser.selectedFile
+                binaryPathField.text = f.absolutePath
+                whisperEngine?.binaryPath = f.absolutePath
+                updateBinaryStatus()
+                saveCurrentConfig()
+            }
+        }
+
+        downloadBinaryBtn.addActionListener {
+            startBinaryDownload()
+        }
+
+        binaryPathField.addActionListener {
+            val path = binaryPathField.text.trim()
+            whisperEngine?.binaryPath = path
+            updateBinaryStatus()
+            saveCurrentConfig()
+        }
+
+        panel.add(binBox, gbc)
+
+        // 2. Multilingual Model Selector
+        gbc.gridx = 0
+        gbc.gridy = 1
+        gbc.weightx = 0.3
         panel.add(JLabel("Multilingual Model:"), gbc)
         gbc.gridx = 1
         gbc.weightx = 0.7
         WhisperModelInfo.AVAILABLE_MODELS.forEach { modelCombo.addItem(it.name) }
         modelCombo.selectedIndex = 1 // default to Base
-        modelCombo.addActionListener { updateModelStatus() }
+        modelCombo.addActionListener {
+            updateModelStatus()
+            saveCurrentConfig()
+        }
         panel.add(modelCombo, gbc)
 
-        // 2. Model Status & Download Button
+        // 3. Model Status & Download Button
         gbc.gridx = 0
-        gbc.gridy = 1
+        gbc.gridy = 2
         gbc.weightx = 0.3
         panel.add(JLabel("Model File Status:"), gbc)
         gbc.gridx = 1
@@ -375,9 +535,9 @@ class PreferencesDialog(
         downloadModelBtn.addActionListener { startModelDownload() }
         panel.add(downloadActionPanel, gbc)
 
-        // 3. Download Progress
+        // 4. Download Progress
         gbc.gridx = 0
-        gbc.gridy = 2
+        gbc.gridy = 3
         gbc.weightx = 0.3
         panel.add(JLabel("Download Progress:"), gbc)
         gbc.gridx = 1
@@ -386,9 +546,9 @@ class PreferencesDialog(
         downloadProgressBar.string = "Idle"
         panel.add(downloadProgressBar, gbc)
 
-        // 4. Language Selection
+        // 5. Language Selection
         gbc.gridx = 0
-        gbc.gridy = 3
+        gbc.gridy = 4
         gbc.weightx = 0.3
         panel.add(JLabel("Spoken Language:"), gbc)
         gbc.gridx = 1
@@ -397,13 +557,14 @@ class PreferencesDialog(
             val idx = languageCombo.selectedIndex
             if (idx in languageCodes.indices && whisperEngine != null) {
                 whisperEngine.language = languageCodes[idx]
+                saveCurrentConfig()
             }
         }
         panel.add(languageCombo, gbc)
 
-        // 5. Inference Device Selection (CPU vs GPU)
+        // 6. Inference Device Selection (CPU vs GPU)
         gbc.gridx = 0
-        gbc.gridy = 4
+        gbc.gridy = 5
         gbc.weightx = 0.3
         panel.add(JLabel("Inference Device:"), gbc)
         gbc.gridx = 1
@@ -411,24 +572,200 @@ class PreferencesDialog(
         deviceCombo.addActionListener {
             if (whisperEngine != null) {
                 whisperEngine.device = if (deviceCombo.selectedIndex == 0) InferenceDevice.CPU else InferenceDevice.GPU
+                saveCurrentConfig()
             }
         }
         panel.add(deviceCombo, gbc)
 
-        // 6. Binary Path info
-        gbc.gridx = 0
-        gbc.gridy = 5
-        gbc.weightx = 0.3
-        panel.add(JLabel("Whisper Executable:"), gbc)
-        gbc.gridx = 1
-        gbc.weightx = 0.7
-        val binaryPath = binaryManager.findWhisperBinary()
-        val binLabel = JLabel(binaryPath)
-        binLabel.font = Font(Font.MONOSPACED, Font.PLAIN, 11)
-        panel.add(binLabel, gbc)
-
+        updateBinaryStatus()
         updateModelStatus()
         return panel
+    }
+
+    private fun createHistoryTab(): JPanel {
+        val panel = JPanel(BorderLayout(8, 8))
+        panel.border = EmptyBorder(10, 12, 10, 12)
+
+        // Top Filter & Action Bar
+        val topBar = JPanel(BorderLayout(6, 6))
+        val searchBox = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
+        searchBox.add(JLabel("Search History:"))
+        searchBox.add(historySearchField)
+        topBar.add(searchBox, BorderLayout.WEST)
+
+        val rightBox = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
+        historyCountLabel.font = Font(Font.SANS_SERIF, Font.ITALIC, 11)
+        rightBox.add(historyCountLabel)
+
+        val clearBtn = JButton("Clear History")
+        clearBtn.addActionListener {
+            val confirm = JOptionPane.showConfirmDialog(
+                this,
+                "Clear all transcription history?",
+                "Confirm Clear",
+                JOptionPane.YES_NO_OPTION
+            )
+            if (confirm == JOptionPane.YES_OPTION) {
+                historyManager.clear()
+                refreshHistoryList()
+            }
+        }
+        rightBox.add(clearBtn)
+        topBar.add(rightBox, BorderLayout.EAST)
+        panel.add(topBar, BorderLayout.NORTH)
+
+        // Center Scrollable List
+        historyListPanel.layout = BoxLayout(historyListPanel, BoxLayout.Y_AXIS)
+        historyListPanel.border = EmptyBorder(4, 4, 4, 4)
+
+        val scrollPane = JScrollPane(historyListPanel)
+        scrollPane.verticalScrollBar.unitIncrement = 16
+        scrollPane.border = LineBorder(Color.LIGHT_GRAY, 1)
+        panel.add(scrollPane, BorderLayout.CENTER)
+
+        historySearchField.addCaretListener {
+            refreshHistoryList(historySearchField.text.trim())
+        }
+
+        refreshHistoryList()
+        return panel
+    }
+
+    private fun refreshHistoryList(query: String = historySearchField.text.trim()) {
+        historyListPanel.removeAll()
+        val allEntries = historyManager.getAll()
+        val filtered = if (query.isEmpty()) {
+            allEntries
+        } else {
+            allEntries.filter { it.text.contains(query, ignoreCase = true) }
+        }
+
+        historyCountLabel.text = "Showing ${filtered.size} of ${allEntries.size} entries"
+
+        if (filtered.isEmpty()) {
+            val emptyLabel = JLabel(
+                if (allEntries.isEmpty()) "No dictations yet. Hold your hotkey (${orchestrator.currentHotkey.displayText}) and speak!"
+                else "No transcriptions matching \"$query\""
+            )
+            emptyLabel.border = EmptyBorder(20, 20, 20, 20)
+            emptyLabel.foreground = Color.GRAY
+            historyListPanel.add(emptyLabel)
+        } else {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+            for (entry in filtered) {
+                val card = createHistoryCard(entry, dateFormat)
+                historyListPanel.add(card)
+                historyListPanel.add(Box.createVerticalStrut(6))
+            }
+        }
+
+        historyListPanel.revalidate()
+        historyListPanel.repaint()
+    }
+
+    private fun createHistoryCard(entry: HistoryEntry, dateFormat: SimpleDateFormat): JPanel {
+        val card = JPanel(BorderLayout(6, 6))
+        card.border = CompoundBorder(
+            LineBorder(Color(218, 224, 233), 1, true),
+            EmptyBorder(8, 10, 8, 10)
+        )
+        card.background = Color(250, 252, 255)
+        card.maximumSize = Dimension(Short.MAX_VALUE.toInt(), 120)
+
+        // Top info row
+        val topRow = JPanel(BorderLayout())
+        topRow.isOpaque = false
+
+        val dateStr = dateFormat.format(Date(entry.timestamp))
+        val durSec = String.format("%.1fs", entry.durationMs / 1000.0)
+        val infoLabel = JLabel("$dateStr  |  $durSec  |  ${entry.engine.ifEmpty { "GolosAI" }}")
+        infoLabel.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
+        infoLabel.foreground = Color(100, 110, 120)
+        topRow.add(infoLabel, BorderLayout.WEST)
+
+        // Copy Button
+        val copyBtn = JButton("📋 Copy")
+        copyBtn.font = Font(Font.SANS_SERIF, Font.PLAIN, 11)
+        copyBtn.isFocusPainted = false
+        copyBtn.addActionListener {
+            val selection = StringSelection(entry.text)
+            Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
+            copyBtn.text = "✓ Copied!"
+            Timer(1500) { copyBtn.text = "📋 Copy" }.apply {
+                isRepeats = false
+                start()
+            }
+        }
+        topRow.add(copyBtn, BorderLayout.EAST)
+        card.add(topRow, BorderLayout.NORTH)
+
+        // Text Area
+        val textArea = JTextArea(entry.text)
+        textArea.isEditable = false
+        textArea.lineWrap = true
+        textArea.wrapStyleWord = true
+        textArea.background = Color(250, 252, 255)
+        textArea.font = Font(Font.SANS_SERIF, Font.PLAIN, 13)
+        card.add(textArea, BorderLayout.CENTER)
+
+        return card
+    }
+
+    private fun updateBinaryStatus() {
+        val configuredPath = binaryPathField.text.trim()
+        val foundPath = binaryManager.findWhisperBinary(configuredPath.ifEmpty { null })
+        val exists = File(foundPath).canExecute()
+
+        if (exists) {
+            binaryStatusLabel.text = "✓ Ready: $foundPath"
+            binaryStatusLabel.foreground = Color(0, 130, 0)
+            binaryPathField.text = foundPath
+            whisperEngine?.binaryPath = foundPath
+        } else {
+            binaryStatusLabel.text = "✗ Not Found! Click 'Download whisper-cli' or 'Browse' to set executable."
+            binaryStatusLabel.foreground = Color(180, 0, 0)
+        }
+    }
+
+    private fun startBinaryDownload() {
+        downloadBinaryBtn.isEnabled = false
+        downloadProgressBar.value = 0
+        downloadProgressBar.string = "Downloading whisper-cli..."
+
+        coroutineScope.launch {
+            val result = binaryManager.downloadPrecompiledBinary { pct, status ->
+                SwingUtilities.invokeLater {
+                    downloadProgressBar.value = (pct * 100).toInt()
+                    downloadProgressBar.string = status
+                }
+            }
+
+            SwingUtilities.invokeLater {
+                downloadBinaryBtn.isEnabled = true
+                if (result.isSuccess) {
+                    val file = result.getOrThrow()
+                    binaryPathField.text = file.absolutePath
+                    whisperEngine?.binaryPath = file.absolutePath
+                    updateBinaryStatus()
+                    saveCurrentConfig()
+                    downloadProgressBar.string = "whisper-cli Installed"
+                    JOptionPane.showMessageDialog(
+                        this@PreferencesDialog,
+                        "whisper-cli binary installed successfully:\n${file.absolutePath}",
+                        "Installation Complete",
+                        JOptionPane.INFORMATION_MESSAGE
+                    )
+                } else {
+                    downloadProgressBar.string = "Download Failed"
+                    JOptionPane.showMessageDialog(
+                        this@PreferencesDialog,
+                        "Failed to download whisper-cli:\n${result.exceptionOrNull()?.message}",
+                        "Download Error",
+                        JOptionPane.ERROR_MESSAGE
+                    )
+                }
+            }
+        }
     }
 
     private fun updateModelStatus() {
@@ -438,7 +775,6 @@ class PreferencesDialog(
             modelStatusLabel.text = "✓ Downloaded"
             modelStatusLabel.foreground = Color(0, 140, 0)
             downloadModelBtn.text = "Re-download"
-            // Update engine model path
             whisperEngine?.modelPath = modelDownloader.getLocalModelFile(selectedModel).absolutePath
         } else {
             modelStatusLabel.text = "✗ Not found locally"
@@ -474,6 +810,7 @@ class PreferencesDialog(
                     val file = result.getOrThrow()
                     whisperEngine?.modelPath = file.absolutePath
                     updateModelStatus()
+                    saveCurrentConfig()
                     downloadProgressBar.string = "Completed"
                     JOptionPane.showMessageDialog(
                         this@PreferencesDialog,
@@ -513,6 +850,101 @@ class PreferencesDialog(
                 micCombo.addItem(device.name)
             }
         }
+    }
+
+    private fun wireHistoryListener() {
+        val oldCallback = orchestrator.onTranscriptionCompleted
+        orchestrator.onTranscriptionCompleted = { result, engine ->
+            oldCallback?.invoke(result, engine)
+            historyManager.addEntry(
+                text = result.text,
+                durationMs = result.durationMs,
+                engine = engine.displayName
+            )
+            SwingUtilities.invokeLater {
+                refreshHistoryList()
+            }
+        }
+    }
+
+    private fun loadInitialConfig() {
+        val config = settingsManager.load()
+        applyConfigToUi(config)
+    }
+
+    private fun applyConfigToUi(c: GolosConfig) {
+        // Hotkey
+        val hk = c.hotkey.toHotkeyConfig()
+        orchestrator.updateHotkey(hk)
+        activeHotkeyLabel.text = hk.displayText
+        ctrlCheck.isSelected = c.hotkey.ctrl
+        shiftCheck.isSelected = c.hotkey.shift
+        altCheck.isSelected = c.hotkey.alt
+        metaCheck.isSelected = c.hotkey.meta
+        keyField.text = c.hotkey.keyName
+        recordBtn.text = "Recorded: ${hk.displayText} (Click to change)"
+
+        // Insertion
+        val ins = c.insertion.toInjectionConfig()
+        orchestrator.injectionConfig = ins
+        insertionModeCombo.selectedIndex = if (ins.mode == InsertionMode.DIRECT_TYPING) 0 else 1
+        copyClipboardCheck.isSelected = ins.copyToClipboard
+        fallbackClipboardCheck.isSelected = ins.copyToClipboardIfNoField
+
+        // Autostart
+        autostartCheck.isSelected = c.autostart.enabled
+        autoStartManager.setAutoStart(c.autostart.enabled)
+
+        // Engine
+        if (c.engine.selectedId == "whisper-cpp") {
+            val idx = availableEngines.indexOfFirst { it is WhisperCppEngine }
+            if (idx != -1) engineCombo.selectedIndex = idx
+        } else {
+            engineCombo.selectedIndex = 0
+        }
+
+        // Whisper details
+        if (c.engine.whisper.binaryPath.isNotEmpty()) {
+            binaryPathField.text = c.engine.whisper.binaryPath
+            whisperEngine?.binaryPath = c.engine.whisper.binaryPath
+        }
+        val langIdx = languageCodes.indexOf(c.engine.whisper.language)
+        if (langIdx != -1) languageCombo.selectedIndex = langIdx
+        deviceCombo.selectedIndex = if (c.engine.whisper.device == "GPU") 1 else 0
+
+        updateBinaryStatus()
+        updateModelStatus()
+        renderStatus(orchestrator.state.value)
+    }
+
+    private fun saveCurrentConfig() {
+        val hk = orchestrator.currentHotkey
+        val ins = orchestrator.injectionConfig
+        val selectedEngineId = if (orchestrator.speechEngine is WhisperCppEngine) "whisper-cpp" else "mock"
+
+        val config = GolosConfig(
+            version = "1.0",
+            hotkey = HotkeySettings.from(hk),
+            insertion = InsertionSettings.from(ins),
+            audio = AudioSettings(
+                deviceName = orchestrator.selectedDevice?.id ?: "",
+                provider = "JavaSound"
+            ),
+            engine = EngineSettings(
+                selectedId = selectedEngineId,
+                whisper = WhisperSettings(
+                    binaryPath = whisperEngine?.binaryPath ?: "",
+                    modelPath = whisperEngine?.modelPath ?: "",
+                    modelName = WhisperModelInfo.AVAILABLE_MODELS.getOrNull(modelCombo.selectedIndex)?.name ?: "base",
+                    language = whisperEngine?.language ?: "auto",
+                    device = whisperEngine?.device?.name ?: "CPU"
+                )
+            ),
+            autostart = AutostartSettings(
+                enabled = autostartCheck.isSelected
+            )
+        )
+        settingsManager.save(config)
     }
 
     private fun observeState() {

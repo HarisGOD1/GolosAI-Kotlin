@@ -12,4 +12,5 @@ dependencies {
     implementation(project(":voice-backend"))
     implementation(project(":system-utils"))
     implementation("ch.qos.logback:logback-classic:1.5.6")
+    implementation("org.yaml:snakeyaml:2.2")
 }

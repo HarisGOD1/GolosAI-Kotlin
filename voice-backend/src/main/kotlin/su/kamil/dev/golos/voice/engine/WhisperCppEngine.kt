@@ -48,8 +48,14 @@ class WhisperCppEngine(
         try {
             tempWav.writeBytes(wavBytes)
 
+            val resolvedBin = if (File(binaryPath).canExecute()) {
+                binaryPath
+            } else {
+                su.kamil.dev.golos.voice.download.WhisperBinaryManager().findWhisperBinary(binaryPath)
+            }
+
             val cmd = mutableListOf(
-                binaryPath,
+                resolvedBin,
                 "-m", modelPath,
                 "-f", tempWav.absolutePath,
                 "-t", threads.toString(),
@@ -70,9 +76,9 @@ class WhisperCppEngine(
                     .redirectErrorStream(true)
                     .start()
             } catch (e: Exception) {
-                logger.error("Failed to start whisper-cli process at path '{}'", binaryPath, e)
+                logger.error("Failed to start whisper-cli process at path '{}'", resolvedBin, e)
                 return@withContext TranscriptionResult(
-                    text = "[Error: whisper-cli executable not found at '$binaryPath'. Please check binary path or install whisper.cpp]",
+                    text = "[Error: whisper-cli not found at '$resolvedBin'. Open Preferences -> 'Whisper Models & Hardware' and click 'Download whisper-cli' or select 'Mock Engine'.]",
                     durationMs = System.currentTimeMillis() - startTime,
                     isFinal = true,
                     confidence = 0.0f

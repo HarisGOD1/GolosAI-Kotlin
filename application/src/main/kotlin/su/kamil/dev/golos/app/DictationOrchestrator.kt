@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory
 import su.kamil.dev.golos.core.model.AudioDevice
 import su.kamil.dev.golos.core.model.DictationState
 import su.kamil.dev.golos.core.model.HotkeyConfig
+import su.kamil.dev.golos.core.model.TranscriptionResult
 import su.kamil.dev.golos.core.ports.AudioCapturePort
 import su.kamil.dev.golos.core.ports.GlobalHotkeyHook
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
@@ -34,6 +35,7 @@ class DictationOrchestrator(
     var injectionConfig: su.kamil.dev.golos.core.model.InjectionConfig = su.kamil.dev.golos.core.model.InjectionConfig()
 
     val state: StateFlow<DictationState> = stateMachine.state
+    var onTranscriptionCompleted: ((TranscriptionResult, SpeechToTextEngine) -> Unit)? = null
 
     /**
      * Initializes hotkey binding and starts listening for push-to-talk events.
@@ -108,6 +110,7 @@ class DictationOrchestrator(
                         )
 
                         if (result.text.isNotBlank()) {
+                            onTranscriptionCompleted?.invoke(result, speechEngine)
                             textInjector.injectText(result.text, injectionConfig)
                         } else {
                             logger.info("Transcription result is blank; skipping injection.")
