@@ -1,7 +1,7 @@
 package su.kamil.dev.golos.system.input
 
-import com.sun.jna.Memory
-import com.sun.jna.NativeLong
+import com.sun.jna.Library
+import com.sun.jna.Native
 import com.sun.jna.Pointer
 import org.slf4j.LoggerFactory
 import su.kamil.dev.golos.core.ports.TextInjectorPort
@@ -13,15 +13,34 @@ import java.awt.datatransfer.Transferable
 import java.awt.event.KeyEvent
 
 /**
+ * JNA binding for the X11 XTEST extension (libXtst.so.6).
+ * Used to generate true hardware-level keystrokes on X11/Xwayland without triggering desktop portal prompts.
+ */
+interface XtstLib : Library {
+    companion object {
+        val INSTANCE: XtstLib? = try {
+            Native.load("Xtst", XtstLib::class.java)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    fun XTestFakeKeyEvent(display: Pointer?, keycode: Int, is_press: Boolean, delay: Long): Int
+}
+
+/**
  * Injects transcribed text into the currently active window / input field.
  *
- * Under Linux X11, synthesizes keystrokes directly using libX11 (XSendEvent)
- * to avoid triggering the AWT Robot remote-desktop / screen-sharing portal prompt.
- * Under Windows / macOS, uses java.awt.Robot keystroke synthesis.
+ * Sequence:
+ * 1. Sets both System Clipboard (Ctrl+V) and Primary Selection (Shift+Insert / middle-click).
+ * 2. Attempts hardware keystroke synthesis via X11 XTEST extension (if libXtst is present).
+ * 3. Attempts xdotool (if installed).
+ * 4. Synthesizes Ctrl+V using java.awt.Robot (cross-platform; on modern Wayland/Linux,
+ *    this uses the desktop Input/RemoteDesktop portal once permission is granted).
  */
 class ActiveWindowTextInjector(
     private val restoreClipboard: Boolean = false,
-    private val pasteDelayMs: Long = 80
+    private val pasteDelayMs: Long = 100
 ) : TextInjectorPort {
 
     private val logger = LoggerFactory.getLogger(ActiveWindowTextInjector::class.java)
@@ -43,51 +62,53 @@ class ActiveWindowTextInjector(
             }
         } else null
 
-        // 1. Put text into both System Clipboard (Ctrl+V) and Primary Selection (Shift+Insert / middle-click)
+        // 1. Put text into both System Clipboard and Primary Selection
         val selection = StringSelection(text)
         clipboard.setContents(selection, null)
         try {
             toolkit.systemSelection?.setContents(selection, null)
         } catch (e: Exception) {
-            logger.debug("Could not set system selection (primary)", e)
+            logger.debug("Could not set system primary selection", e)
         }
-        logger.info("Copied transcription to system clipboard: \"{}\"", text)
+        logger.info("Copied transcription to clipboard: \"{}\"", text)
 
         val os = System.getProperty("os.name").lowercase()
-        val isLinux = os.contains("linux")
         val isMac = os.contains("mac")
 
         Thread.sleep(pasteDelayMs)
 
         var pasteSuccess = false
 
-        // 2. On Linux X11: use native X11 XSendEvent to avoid Robot ScreenCast/RemoteDesktop portal popup
-        if (isLinux && X11Lib.INSTANCE != null) {
-            pasteSuccess = tryX11DirectPaste()
+        // 2. Try X11 XTest extension (libXtst) for seamless zero-portal hardware event synthesis
+        if (XtstLib.INSTANCE != null) {
+            pasteSuccess = tryXtstDirectPaste()
         }
 
-        // 3. Try xdotool if available on Linux
-        if (isLinux && !pasteSuccess) {
+        // 3. Try xdotool if installed
+        if (!pasteSuccess) {
             pasteSuccess = tryXdotoolPaste()
         }
 
-        // 4. Fallback: java.awt.Robot (standard on macOS & Windows; fallback on Linux if portal allowed)
+        // 4. Primary universal keystroke synthesis via java.awt.Robot
         if (!pasteSuccess && !java.awt.GraphicsEnvironment.isHeadless()) {
             try {
-                logger.info("Falling back to AWT Robot paste simulation")
+                logger.info("Dispatching Ctrl+V paste keystroke via AWT Robot")
                 val robot = Robot()
+                robot.autoDelay = 20
+
                 val modifierKey = if (isMac) KeyEvent.VK_META else KeyEvent.VK_CONTROL
                 robot.keyPress(modifierKey)
                 robot.keyPress(KeyEvent.VK_V)
                 robot.keyRelease(KeyEvent.VK_V)
                 robot.keyRelease(modifierKey)
                 pasteSuccess = true
+                logger.info("Successfully dispatched paste keystroke")
             } catch (e: Exception) {
-                logger.warn("Robot paste simulation could not complete", e)
+                logger.warn("Robot paste simulation encountered error: {}", e.message)
             }
         }
 
-        // 5. Optionally restore original clipboard after paste
+        // 5. Optionally restore original clipboard after delay
         if (restoreClipboard && previousContent != null) {
             Thread {
                 try {
@@ -100,24 +121,12 @@ class ActiveWindowTextInjector(
         }
     }
 
-    /**
-     * Synthesizes Ctrl+V directly to the focused X11 window using XSendEvent.
-     * This bypasses Java's AWT Robot and does NOT trigger the Linux ScreenCast desktop portal.
-     */
-    private fun tryX11DirectPaste(): Boolean {
+    private fun tryXtstDirectPaste(): Boolean {
+        val xtst = XtstLib.INSTANCE ?: return false
         val x11 = X11Lib.INSTANCE ?: return false
         val display = x11.XOpenDisplay(null) ?: return false
 
         return try {
-            val root = x11.XDefaultRootWindow(display)
-            val focusWinMem = Memory(8)
-            val revertToMem = Memory(4)
-            x11.XGetInputFocus(display, focusWinMem, revertToMem)
-            var targetWin = focusWinMem.getLong(0)
-            if (targetWin <= 1L) {
-                targetWin = root
-            }
-
             val ctrlKeycode = x11.XKeysymToKeycode(display, x11.XStringToKeysym("Control_L")).toInt() and 0xFF
             var vKeycode = x11.XKeysymToKeycode(display, x11.XStringToKeysym("v")).toInt() and 0xFF
             if (vKeycode == 0) {
@@ -125,62 +134,28 @@ class ActiveWindowTextInjector(
             }
 
             if (ctrlKeycode == 0 || vKeycode == 0) {
-                logger.warn("Could not resolve X11 keycodes for Ctrl+V paste")
+                logger.warn("Could not resolve keycodes for XTest Ctrl+V")
                 return false
             }
 
-            // 1. Press Control_L (type = 2, state = 0)
-            sendX11KeyEvent(x11, display, targetWin, root, 2, ctrlKeycode, 0)
-
-            // 2. Press V (type = 2, state = 4 -> ControlMask)
-            sendX11KeyEvent(x11, display, targetWin, root, 2, vKeycode, 4)
-
-            // 3. Release V (type = 3, state = 4 -> ControlMask)
-            sendX11KeyEvent(x11, display, targetWin, root, 3, vKeycode, 4)
-
-            // 4. Release Control_L (type = 3, state = 0)
-            sendX11KeyEvent(x11, display, targetWin, root, 3, ctrlKeycode, 0)
+            // KeyPress Control_L
+            xtst.XTestFakeKeyEvent(display, ctrlKeycode, true, 0)
+            // KeyPress V
+            xtst.XTestFakeKeyEvent(display, vKeycode, true, 0)
+            // KeyRelease V
+            xtst.XTestFakeKeyEvent(display, vKeycode, false, 0)
+            // KeyRelease Control_L
+            xtst.XTestFakeKeyEvent(display, ctrlKeycode, false, 0)
 
             x11.XFlush(display)
-            logger.info("Sent native X11 Ctrl+V paste event to window 0x{}", java.lang.Long.toHexString(targetWin))
+            logger.info("Synthesized hardware-level Ctrl+V via X11 XTEST extension")
             true
         } catch (e: Exception) {
-            logger.warn("Direct X11 paste failed", e)
+            logger.warn("Direct XTEST paste failed", e)
             false
         } finally {
             x11.XCloseDisplay(display)
         }
-    }
-
-    private fun sendX11KeyEvent(
-        x11: X11Lib,
-        display: Pointer,
-        window: Long,
-        root: Long,
-        type: Int,
-        keycode: Int,
-        state: Int
-    ) {
-        val event = Memory(192)
-        event.clear()
-        event.setInt(0, type)
-        event.setNativeLong(8, NativeLong(0))
-        event.setInt(16, 1) // send_event = True
-        event.setPointer(24, display)
-        event.setLong(32, window)
-        event.setLong(40, root)
-        event.setLong(48, 0L) // subwindow
-        event.setNativeLong(56, NativeLong(0)) // time = CurrentTime
-        event.setInt(64, 1) // x
-        event.setInt(68, 1) // y
-        event.setInt(72, 1) // x_root
-        event.setInt(76, 1) // y_root
-        event.setInt(80, state)
-        event.setInt(84, keycode)
-        event.setInt(88, 1) // same_screen
-
-        val mask = if (type == 2) 1L /* KeyPressMask */ else 2L /* KeyReleaseMask */
-        x11.XSendEvent(display, window, true, mask, event)
     }
 
     private fun tryXdotoolPaste(): Boolean {
