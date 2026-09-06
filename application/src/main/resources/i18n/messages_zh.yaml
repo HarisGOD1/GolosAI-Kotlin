@@ -1,6 +1,6 @@
 tab.dashboard: "仪表板"
 tab.settings: "设置"
-tab.whisper: "Whisper 与模型"
+tab.whisper: "引擎与模型"
 tab.history: "历史记录"
 tab.batch: "批量转录"
 bulb.app.title: "程序"

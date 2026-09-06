@@ -110,10 +110,35 @@ fun main() {
         }
     }
 
+    val defaultVoskModel = su.kamil.dev.golos.voice.download.VoskModelInfo.AVAILABLE_MODELS.first()
+    val configuredVoskModel =
+        config.engine.vosk.modelPath.ifEmpty {
+            modelDownloader.getLocalModelFile(defaultVoskModel).absolutePath
+        }
+    val voskEngine =
+        su.kamil.dev.golos.voice.engine.VoskEngine(
+            modelPath = configuredVoskModel,
+            binaryPath = config.engine.vosk.binaryPath.ifEmpty { "vosk-transcriber" },
+        )
+
+    val defaultSherpaModel = su.kamil.dev.golos.voice.download.SherpaModelInfo.AVAILABLE_MODELS.first()
+    val configuredSherpaModel =
+        config.engine.sherpa.modelPath.ifEmpty {
+            modelDownloader.getLocalModelFile(defaultSherpaModel).absolutePath
+        }
+    val sherpaEngine =
+        su.kamil.dev.golos.voice.engine.SherpaOnnxEngine(
+            modelPath = configuredSherpaModel,
+            binaryPath = config.engine.sherpa.binaryPath.ifEmpty { "sherpa-onnx" },
+            threads = config.engine.sherpa.threads,
+        )
+
     val engines =
         mutableListOf<SpeechToTextEngine>(
-            MockSpeechToTextEngine(),
             whisperEngine,
+            voskEngine,
+            sherpaEngine,
+            MockSpeechToTextEngine(),
         )
 
     val activeEngine =

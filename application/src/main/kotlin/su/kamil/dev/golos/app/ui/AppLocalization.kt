@@ -24,8 +24,7 @@ enum class AppLanguage(val code: String, val displayName: String) {
     ;
 
     companion object {
-        fun fromCode(code: String): AppLanguage =
-            entries.firstOrNull { it.code.equals(code, ignoreCase = true) } ?: EN
+        fun fromCode(code: String): AppLanguage = entries.firstOrNull { it.code.equals(code, ignoreCase = true) } ?: EN
     }
 }
 
@@ -59,11 +58,12 @@ object AppLocalization {
         cache.getOrPut(lang) {
             val resourcePath = "/i18n/messages_${lang.code}.yaml"
             try {
-                val stream = AppLocalization::class.java.getResourceAsStream(resourcePath)
-                    ?: run {
-                        logger.warn("Localization resource not found: {}", resourcePath)
-                        return@getOrPut emptyMap()
-                    }
+                val stream =
+                    AppLocalization::class.java.getResourceAsStream(resourcePath)
+                        ?: run {
+                            logger.warn("Localization resource not found: {}", resourcePath)
+                            return@getOrPut emptyMap()
+                        }
                 InputStreamReader(stream, Charsets.UTF_8).use { reader ->
                     val raw = Yaml().load<Map<String, Any>>(reader) ?: emptyMap()
                     raw.mapValues { it.value?.toString() ?: "" }

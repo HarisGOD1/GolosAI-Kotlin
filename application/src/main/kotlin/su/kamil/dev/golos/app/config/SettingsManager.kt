@@ -10,6 +10,8 @@ import su.kamil.dev.golos.core.model.GolosConfig
 import su.kamil.dev.golos.core.model.HotkeySettings
 import su.kamil.dev.golos.core.model.InsertionSettings
 import su.kamil.dev.golos.core.model.PostProcessingSettings
+import su.kamil.dev.golos.core.model.SherpaSettings
+import su.kamil.dev.golos.core.model.VoskSettings
 import su.kamil.dev.golos.core.model.WhisperSettings
 import java.io.File
 import java.io.FileReader
@@ -59,7 +61,11 @@ class SettingsManager(
                 parseConfig(data)
             }
         } catch (e: Exception) {
-            logger.error("Error reading YAML configuration from {}: {}. Falling back to defaults.", configFile.absolutePath, e.message)
+            logger.error(
+                "Error reading YAML configuration from {}: {}. Falling back to defaults.",
+                configFile.absolutePath,
+                e.message,
+            )
             GolosConfig()
         }
     }
@@ -150,6 +156,19 @@ class SettingsManager(
                             "threads" to c.engine.whisper.threads,
                             "bilingualMode" to c.engine.whisper.bilingualMode,
                         ),
+                    "vosk" to
+                        linkedMapOf(
+                            "binaryPath" to c.engine.vosk.binaryPath,
+                            "modelPath" to c.engine.vosk.modelPath,
+                            "modelName" to c.engine.vosk.modelName,
+                        ),
+                    "sherpa" to
+                        linkedMapOf(
+                            "binaryPath" to c.engine.sherpa.binaryPath,
+                            "modelPath" to c.engine.sherpa.modelPath,
+                            "modelName" to c.engine.sherpa.modelName,
+                            "threads" to c.engine.sherpa.threads,
+                        ),
                 ),
             "autostart" to
                 linkedMapOf(
@@ -213,10 +232,27 @@ class SettingsManager(
                 threads = (whsMap["threads"] as? Number)?.toInt() ?: 4,
                 bilingualMode = whsMap["bilingualMode"] as? Boolean ?: false,
             )
+        val voskMap = engMap["vosk"] as? Map<String, Any> ?: emptyMap()
+        val vosk =
+            VoskSettings(
+                binaryPath = voskMap["binaryPath"]?.toString() ?: "",
+                modelPath = voskMap["modelPath"]?.toString() ?: "",
+                modelName = voskMap["modelName"]?.toString() ?: "vosk-model-small-en-us-0.15",
+            )
+        val sherpaMap = engMap["sherpa"] as? Map<String, Any> ?: emptyMap()
+        val sherpa =
+            SherpaSettings(
+                binaryPath = sherpaMap["binaryPath"]?.toString() ?: "",
+                modelPath = sherpaMap["modelPath"]?.toString() ?: "",
+                modelName = sherpaMap["modelName"]?.toString() ?: "PengChengStarling",
+                threads = (sherpaMap["threads"] as? Number)?.toInt() ?: 4,
+            )
         val engine =
             EngineSettings(
                 selectedId = engMap["selectedId"]?.toString() ?: "whisper",
                 whisper = whisper,
+                vosk = vosk,
+                sherpa = sherpa,
             )
 
         val autoMap = map["autostart"] as? Map<String, Any> ?: emptyMap()

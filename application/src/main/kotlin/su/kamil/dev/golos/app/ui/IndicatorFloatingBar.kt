@@ -251,4 +251,3 @@ class IndicatorFloatingBar(
         contentBarPanel.repaint()
     }
 }
-

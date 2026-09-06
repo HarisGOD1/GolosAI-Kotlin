@@ -88,8 +88,45 @@ class SettingsAndHistoryTest {
         manager.save(config)
 
         val reloaded = manager.load()
-        assertEquals("ON_THE_FLY", reloaded.insertion.timing)
-        assertEquals(su.kamil.dev.golos.core.model.InjectionTiming.ON_THE_FLY, reloaded.insertion.toInjectionConfig().timing)
+        val expectedTiming = su.kamil.dev.golos.core.model.InjectionTiming.ON_THE_FLY
+        assertEquals(expectedTiming, reloaded.insertion.toInjectionConfig().timing)
+    }
+
+    @Test
+    fun `SettingsManager preserves default engine as whisper and loads vosk and sherpa engine settings`() {
+        val manager = SettingsManager(tempConfigFile)
+        val config = manager.load()
+        assertEquals("whisper", config.engine.selectedId)
+
+        val customEngineConfig =
+            config.copy(
+                engine =
+                    su.kamil.dev.golos.core.model.EngineSettings(
+                        selectedId = "vosk",
+                        vosk =
+                            su.kamil.dev.golos.core.model.VoskSettings(
+                                binaryPath = "/usr/bin/vosk-transcriber",
+                                modelPath = "/path/to/vosk-model",
+                                modelName = "vosk-model-small-ru-0.22",
+                            ),
+                        sherpa =
+                            su.kamil.dev.golos.core.model.SherpaSettings(
+                                binaryPath = "/usr/bin/sherpa-onnx",
+                                modelPath = "/path/to/sherpa-model",
+                                modelName = "PengChengStarling",
+                                threads = 8,
+                            ),
+                    ),
+            )
+        manager.save(customEngineConfig)
+
+        val reloaded = manager.load()
+        assertEquals("vosk", reloaded.engine.selectedId)
+        assertEquals("/usr/bin/vosk-transcriber", reloaded.engine.vosk.binaryPath)
+        assertEquals("vosk-model-small-ru-0.22", reloaded.engine.vosk.modelName)
+        assertEquals("/usr/bin/sherpa-onnx", reloaded.engine.sherpa.binaryPath)
+        assertEquals("PengChengStarling", reloaded.engine.sherpa.modelName)
+        assertEquals(8, reloaded.engine.sherpa.threads)
     }
 
     @Test
@@ -147,7 +184,8 @@ class SettingsAndHistoryTest {
         val historyManager = HistoryManager(tempHistoryFile)
 
         val e1 = historyManager.addEntry("First transcription", 1200, "MockEngine", "en")
-        val e2 = historyManager.addEntry("Second transcription with special \"quotes\" & symbols", 2500, "Whisper.cpp", "ru")
+        val text2 = "Second transcription with special \"quotes\" & symbols"
+        val e2 = historyManager.addEntry(text2, 2500, "Whisper.cpp", "ru")
 
         val all = historyManager.getAll()
         assertEquals(2, all.size)

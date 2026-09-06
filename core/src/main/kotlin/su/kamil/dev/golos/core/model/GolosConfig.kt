@@ -79,9 +79,24 @@ data class WhisperSettings(
     val bilingualMode: Boolean = false,
 )
 
+data class VoskSettings(
+    val binaryPath: String = "",
+    val modelPath: String = "",
+    val modelName: String = "vosk-model-small-en-us-0.15",
+)
+
+data class SherpaSettings(
+    val binaryPath: String = "",
+    val modelPath: String = "",
+    val modelName: String = "PengChengStarling",
+    val threads: Int = 4,
+)
+
 data class EngineSettings(
     val selectedId: String = "whisper",
     val whisper: WhisperSettings = WhisperSettings(),
+    val vosk: VoskSettings = VoskSettings(),
+    val sherpa: SherpaSettings = SherpaSettings(),
 )
 
 data class AutostartSettings(

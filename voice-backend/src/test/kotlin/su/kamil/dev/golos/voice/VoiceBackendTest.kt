@@ -220,4 +220,119 @@ class VoiceBackendTest {
         engine.language = "de"
         assertEquals("de", engine.language)
     }
+
+    @Test
+    fun `test VoskModelInfo list provides models for all 10 application localizations`() {
+        val models = su.kamil.dev.golos.voice.download.VoskModelInfo.AVAILABLE_MODELS
+        assertEquals(10, models.size)
+        val expectedLanguages = listOf("en", "ru", "de", "fr", "es", "it", "ja", "zh", "tr", "ar")
+        for (lang in expectedLanguages) {
+            assertTrue(models.any { it.languageCode == lang }, "Missing Vosk model for language: $lang")
+        }
+        assertTrue(models.all { it.isArchive })
+        assertTrue(models.all { it.filename.endsWith(".zip") })
+    }
+
+    @Test
+    fun `test SherpaModelInfo list contains PengChengStarling and Zipformer models`() {
+        val models = su.kamil.dev.golos.voice.download.SherpaModelInfo.AVAILABLE_MODELS
+        assertEquals(2, models.size)
+        assertTrue(models.any { it.id == "PengChengStarling" })
+        assertTrue(models.any { it.id == "sherpa-onnx-streaming-zipformer-small-bilingual-zh-en" })
+        assertTrue(models.all { it.isArchive })
+        assertTrue(models.all { it.filename.endsWith(".tar.bz2") })
+    }
+
+    @Test
+    fun `test VoskEngine initialization with nonexistent directory returns failure`() =
+        runBlocking {
+            val engine = su.kamil.dev.golos.voice.engine.VoskEngine(modelPath = "/nonexistent/vosk/model")
+            val initResult = engine.initialize()
+            assertTrue(initResult.isFailure)
+        }
+
+    @Test
+    fun `test VoskEngine handles silence gracefully without error`() =
+        runBlocking {
+            val engine = su.kamil.dev.golos.voice.engine.VoskEngine(modelPath = "/nonexistent/vosk/model")
+            val silentChunk = AudioChunk(ByteArray(1600))
+            val result = engine.transcribe(silentChunk)
+            assertEquals("", result.text)
+        }
+
+    @Test
+    fun `test VoskEngine transcribeFile with missing file returns error result`() =
+        runBlocking {
+            val engine = su.kamil.dev.golos.voice.engine.VoskEngine(modelPath = "/fake/model")
+            val result = engine.transcribeFile(java.io.File("/nonexistent/file.wav"))
+            assertTrue(result.text.contains("Error: Audio file not found"))
+        }
+
+    @Test
+    fun `test SherpaOnnxEngine initialization with nonexistent directory returns failure`() =
+        runBlocking {
+            val engine = su.kamil.dev.golos.voice.engine.SherpaOnnxEngine(modelPath = "/nonexistent/sherpa/model")
+            val initResult = engine.initialize()
+            assertTrue(initResult.isFailure)
+        }
+
+    @Test
+    fun `test SherpaOnnxEngine cleanSherpaOutput extracts transcription text`() {
+        val engine = su.kamil.dev.golos.voice.engine.SherpaOnnxEngine(modelPath = "/fake/model")
+        val raw =
+            """
+            LOG (sherpa-onnx:main.cc:100) Initializing model
+            WARNING: Discarding frame
+            test.wav: Hello world this is sherpa onnx
+            """.trimIndent()
+        val cleaned = engine.cleanSherpaOutput(raw, "test.wav")
+        assertEquals("Hello world this is sherpa onnx", cleaned)
+    }
+
+    @Test
+    fun `test SherpaOnnxEngine handles silence without processing`() =
+        runBlocking {
+            val engine = su.kamil.dev.golos.voice.engine.SherpaOnnxEngine(modelPath = "/fake/model")
+            val silentChunk = AudioChunk(ByteArray(1600))
+            val result = engine.transcribe(silentChunk)
+            assertEquals("", result.text)
+        }
+
+    @Test
+    fun `test VoskBinaryManager and SherpaBinaryManager resolve default binary names`() {
+        val voskMgr = su.kamil.dev.golos.voice.download.VoskBinaryManager()
+        val sherpaMgr = su.kamil.dev.golos.voice.download.SherpaBinaryManager()
+
+        val voskBin = voskMgr.findVoskBinary()
+        val sherpaBin = sherpaMgr.findSherpaBinary()
+
+        assertNotNull(voskBin)
+        assertNotNull(sherpaBin)
+        assertTrue(voskBin.contains("vosk"))
+        assertTrue(sherpaBin.contains("sherpa"))
+    }
+
+    @Test
+    fun `test ModelDownloader discovers extracted archive directory for Vosk model`() {
+        val tempDir =
+            java.io.File.createTempFile("vosk_models_test_", "").apply {
+                delete()
+                mkdirs()
+            }
+        try {
+            val downloader = su.kamil.dev.golos.voice.download.ModelDownloader(modelsDir = tempDir)
+            val voskModel = su.kamil.dev.golos.voice.download.VoskModelInfo.AVAILABLE_MODELS.first()
+
+            assertFalse(downloader.isModelDownloaded(voskModel))
+
+            val extractedDir = java.io.File(tempDir, voskModel.extractedDirName)
+            extractedDir.mkdirs()
+            java.io.File(extractedDir, "README").writeText("fake vosk model")
+
+            assertTrue(downloader.isModelDownloaded(voskModel))
+            assertEquals(extractedDir.absolutePath, downloader.getLocalModelFile(voskModel).absolutePath)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
 }

@@ -10,19 +10,25 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.zip.ZipInputStream
 
 /**
  * Metadata for supported official Whisper.cpp GGML models.
  */
 data class WhisperModelInfo(
-    val id: String,
-    val name: String,
-    val filename: String,
-    val downloadUrl: String,
-    val approximateSizeMb: Int,
+    override val id: String,
+    override val name: String,
+    override val filename: String,
+    override val downloadUrl: String,
+    override val approximateSizeMb: Int,
+    override val engineId: String = "whisper-cpp",
     val isMultilingual: Boolean = true,
-) {
+) : EngineModel {
+    override val isArchive: Boolean get() = false
+    override val extractedDirName: String get() = ""
+
     companion object {
         private const val BASE_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
@@ -61,7 +67,7 @@ data class WhisperModelInfo(
 }
 
 /**
- * Non-blocking model downloader with progress tracking and cancellation.
+ * Non-blocking model downloader with progress tracking, cancellation, and archive extraction.
  */
 class ModelDownloader(
     val modelsDir: File = File(System.getProperty("user.home"), ".cache/golos-ai/models"),
@@ -79,19 +85,27 @@ class ModelDownloader(
         }
     }
 
-    fun findModelFile(model: WhisperModelInfo): File? {
-        // 1. Check local cache dir (~/.cache/golos-ai/models/)
+    fun findModelFile(model: EngineModel): File? {
+        if (model.isArchive) {
+            val localDir = File(modelsDir, model.extractedDirName)
+            if (localDir.exists() && localDir.isDirectory) {
+                val contents = localDir.listFiles()
+                if (contents != null && contents.isNotEmpty()) return localDir
+            }
+            val bundledDir = File("models", model.extractedDirName)
+            if (bundledDir.exists() && bundledDir.isDirectory) return bundledDir
+            return null
+        }
+
         val local = File(modelsDir, model.filename)
         if (local.exists() && local.length() > 1024 * 1024) return local
 
-        // 2. Check bundled project models/ folder for offline archives
         val bundled = File("models", model.filename)
         if (bundled.exists() && bundled.length() > 1024 * 1024) return bundled
 
         val projectRootBundled = File(System.getProperty("user.dir"), "models/${model.filename}")
         if (projectRootBundled.exists() && projectRootBundled.length() > 1024 * 1024) return projectRootBundled
 
-        // 3. Check bundled classpath resource
         val resourceStream = javaClass.getResourceAsStream("/models/${model.filename}")
         if (resourceStream != null) {
             local.parentFile.mkdirs()
@@ -104,24 +118,21 @@ class ModelDownloader(
         return null
     }
 
-    fun isModelDownloaded(model: WhisperModelInfo): Boolean {
-        return findModelFile(model) != null
+    fun isModelDownloaded(model: EngineModel): Boolean = findModelFile(model) != null
+
+    fun getLocalModelFile(model: EngineModel): File {
+        val found = findModelFile(model)
+        if (found != null) return found
+        return if (model.isArchive) File(modelsDir, model.extractedDirName) else File(modelsDir, model.filename)
     }
 
-    fun getLocalModelFile(model: WhisperModelInfo): File {
-        return findModelFile(model) ?: File(modelsDir, model.filename)
-    }
-
-    /**
-     * Downloads model with live progress updates: (bytesDownloaded, totalBytes, percent) -> Unit
-     */
     suspend fun downloadModel(
-        model: WhisperModelInfo,
+        model: EngineModel,
         cancelFlag: AtomicBoolean = AtomicBoolean(false),
         onProgress: (bytesDownloaded: Long, totalBytes: Long, percent: Int) -> Unit,
     ): Result<File> =
         withContext(Dispatchers.IO) {
-            val destinationFile = File(modelsDir, model.filename)
+            val destinationFile = File(modelsDir, if (model.isArchive) model.extractedDirName else model.filename)
             val tempFile = File(modelsDir, "${model.filename}.tmp")
 
             try {
@@ -129,7 +140,7 @@ class ModelDownloader(
                 val request =
                     HttpRequest.newBuilder()
                         .uri(URI.create(model.downloadUrl))
-                        .timeout(Duration.ofMinutes(10))
+                        .timeout(Duration.ofMinutes(15))
                         .GET()
                         .build()
 
@@ -138,7 +149,10 @@ class ModelDownloader(
                     return@withContext Result.failure(IllegalStateException("HTTP download error: ${response.statusCode()}"))
                 }
 
-                val totalBytes = response.headers().firstValueAsLong("Content-Length").orElse(model.approximateSizeMb * 1024L * 1024L)
+                val totalBytes =
+                    response.headers()
+                        .firstValueAsLong("Content-Length")
+                        .orElse(model.approximateSizeMb * 1024L * 1024L)
 
                 response.body().use { inputStream ->
                     FileOutputStream(tempFile).use { outputStream ->
@@ -153,22 +167,77 @@ class ModelDownloader(
                             }
                             outputStream.write(buffer, 0, bytesRead)
                             totalRead += bytesRead
-                            val percent = if (totalBytes > 0) ((totalRead * 100) / totalBytes).toInt().coerceIn(0, 100) else 0
-                            onProgress(totalRead, totalBytes, percent)
+                            val downloadPercent =
+                                if (totalBytes > 0) {
+                                    ((totalRead * 100) / totalBytes).toInt().coerceIn(0, 100)
+                                } else {
+                                    0
+                                }
+                            val effectivePercent = if (model.isArchive) (downloadPercent * 0.85).toInt() else downloadPercent
+                            onProgress(totalRead, totalBytes, effectivePercent)
                         }
                     }
                 }
 
-                if (destinationFile.exists()) {
-                    destinationFile.delete()
+                if (model.isArchive) {
+                    onProgress(totalBytes, totalBytes, 90)
+                    extractArchive(tempFile, modelsDir)
+                    tempFile.delete()
+                    onProgress(totalBytes, totalBytes, 100)
+                    logger.info("Successfully downloaded and extracted model archive to: {}", destinationFile.absolutePath)
+                    Result.success(destinationFile)
+                } else {
+                    if (destinationFile.exists()) {
+                        destinationFile.delete()
+                    }
+                    tempFile.renameTo(destinationFile)
+                    onProgress(totalBytes, totalBytes, 100)
+                    logger.info("Successfully downloaded model to: {}", destinationFile.absolutePath)
+                    Result.success(destinationFile)
                 }
-                tempFile.renameTo(destinationFile)
-                logger.info("Successfully downloaded model to: {}", destinationFile.absolutePath)
-                Result.success(destinationFile)
             } catch (e: Exception) {
                 tempFile.delete()
                 logger.error("Failed to download model '{}'", model.name, e)
                 Result.failure(e)
             }
         }
+
+    private fun extractArchive(
+        archiveFile: File,
+        targetDir: File,
+    ) {
+        targetDir.mkdirs()
+        if (archiveFile.name.endsWith(".zip") || archiveFile.name.endsWith(".tmp") && archiveFile.name.contains(".zip")) {
+            ZipInputStream(archiveFile.inputStream()).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    val outFile = File(targetDir, entry.name)
+                    if (!outFile.canonicalPath.startsWith(targetDir.canonicalPath)) {
+                        throw SecurityException("Zip entry attempted path traversal: ${entry.name}")
+                    }
+                    if (entry.isDirectory) {
+                        outFile.mkdirs()
+                    } else {
+                        outFile.parentFile?.mkdirs()
+                        outFile.outputStream().use { output -> zip.copyTo(output) }
+                    }
+                    entry = zip.nextEntry
+                }
+            }
+        } else {
+            val isBzip2 = archiveFile.name.contains(".bz2")
+            val flag = if (isBzip2) "-xjf" else "-xzf"
+            val pb = ProcessBuilder("tar", flag, archiveFile.absolutePath, "-C", targetDir.absolutePath)
+            val proc = pb.start()
+            val finished = proc.waitFor(120, TimeUnit.SECONDS)
+            if (!finished || proc.exitValue() != 0) {
+                val pbFallback = ProcessBuilder("tar", "-xf", archiveFile.absolutePath, "-C", targetDir.absolutePath)
+                val procFallback = pbFallback.start()
+                val ok = procFallback.waitFor(120, TimeUnit.SECONDS) && procFallback.exitValue() == 0
+                if (!ok) {
+                    throw IllegalStateException("Failed to extract tar archive: ${archiveFile.name}")
+                }
+            }
+        }
+    }
 }

@@ -232,10 +232,15 @@ class PreferencesDialog(
     // Autostart Control
     private val autostartCheck = JCheckBox(AppLocalization.tr("check.autostart"), autoStartManager.isAutoStartEnabled())
 
-    // Whisper & Model Management
+    // Engine & Model Management
     private val whisperEngine = availableEngines.filterIsInstance<WhisperCppEngine>().firstOrNull()
+    private val voskEngine = availableEngines.filterIsInstance<su.kamil.dev.golos.voice.engine.VoskEngine>().firstOrNull()
+    private val sherpaEngine = availableEngines.filterIsInstance<su.kamil.dev.golos.voice.engine.SherpaOnnxEngine>().firstOrNull()
     private val modelDownloader = ModelDownloader()
     private val binaryManager = WhisperBinaryManager()
+    private val sherpaBinaryManager = su.kamil.dev.golos.voice.download.SherpaBinaryManager()
+    private val voskBinaryManager = su.kamil.dev.golos.voice.download.VoskBinaryManager()
+    private var currentModels: List<su.kamil.dev.golos.voice.download.EngineModel> = WhisperModelInfo.AVAILABLE_MODELS
 
     // Binary Controls
     private val binaryStatusLabel = JLabel("Checking binary...")
@@ -1299,7 +1304,9 @@ class PreferencesDialog(
             val idx = engineCombo.selectedIndex
             if (idx in availableEngines.indices) {
                 orchestrator.speechEngine = availableEngines[idx]
+                updateEngineUiForSelectedEngine()
                 saveCurrentConfig()
+                renderStatus(orchestrator.state.value)
             }
         }
         panel.add(engineCombo, gbc)
@@ -1741,11 +1748,20 @@ class PreferencesDialog(
 
         browseBinaryBtn.addActionListener {
             val chooser = JFileChooser()
-            chooser.dialogTitle = "Select whisper-cli or main executable"
+            chooser.dialogTitle =
+                when (orchestrator.speechEngine) {
+                    is su.kamil.dev.golos.voice.engine.VoskEngine -> "Select vosk-transcriber executable"
+                    is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> "Select sherpa-onnx executable"
+                    else -> "Select whisper-cli or main executable"
+                }
             if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
                 val f = chooser.selectedFile
                 binaryPathField.text = f.absolutePath
-                whisperEngine?.binaryPath = f.absolutePath
+                when (val engine = orchestrator.speechEngine) {
+                    is WhisperCppEngine -> engine.binaryPath = f.absolutePath
+                    is su.kamil.dev.golos.voice.engine.VoskEngine -> engine.binaryPath = f.absolutePath
+                    is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> engine.binaryPath = f.absolutePath
+                }
                 updateBinaryStatus()
                 saveCurrentConfig()
             }
@@ -1757,7 +1773,11 @@ class PreferencesDialog(
 
         binaryPathField.addActionListener {
             val path = binaryPathField.text.trim()
-            whisperEngine?.binaryPath = path
+            when (val engine = orchestrator.speechEngine) {
+                is WhisperCppEngine -> engine.binaryPath = path
+                is su.kamil.dev.golos.voice.engine.VoskEngine -> engine.binaryPath = path
+                is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> engine.binaryPath = path
+            }
             updateBinaryStatus()
             saveCurrentConfig()
         }
@@ -1771,9 +1791,19 @@ class PreferencesDialog(
         panel.add(modLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
-        WhisperModelInfo.AVAILABLE_MODELS.forEach { modelCombo.addItem(it.name) }
-        modelCombo.selectedIndex = 1 // default to Base
+        currentModels.forEach { modelCombo.addItem(it.name) }
+        modelCombo.selectedIndex = if (modelCombo.itemCount > 1) 1 else 0
         modelCombo.addActionListener {
+            val idx = modelCombo.selectedIndex
+            val model = currentModels.getOrNull(idx)
+            if (model != null) {
+                val localFile = modelDownloader.getLocalModelFile(model)
+                when (val engine = orchestrator.speechEngine) {
+                    is WhisperCppEngine -> engine.modelPath = localFile.absolutePath
+                    is su.kamil.dev.golos.voice.engine.VoskEngine -> engine.modelPath = localFile.absolutePath
+                    is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> engine.modelPath = localFile.absolutePath
+                }
+            }
             updateModelStatus()
             saveCurrentConfig()
         }
@@ -2349,33 +2379,174 @@ class PreferencesDialog(
         batchResultsPanel.repaint()
     }
 
+    private fun updateEngineUiForSelectedEngine() {
+        val engine = orchestrator.speechEngine
+        when (engine) {
+            is WhisperCppEngine -> {
+                currentModels = WhisperModelInfo.AVAILABLE_MODELS
+                execLabel.text = AppLocalization.tr("label.whisper_exec")
+                modLabel.text = AppLocalization.tr("label.multilingual_model")
+                binaryPathField.text = engine.binaryPath
+                downloadBinaryBtn.text = AppLocalization.tr("btn.download_binary")
+                downloadBinaryBtn.isVisible = true
+                browseBinaryBtn.isVisible = true
+                binaryPathField.isVisible = true
+                spokenLangLabel.isVisible = true
+                languageCombo.isVisible = true
+                bilingualLabel.isVisible = true
+                bilingualModeCheck.isVisible = true
+                deviceCombo.isVisible = true
+            }
+            is su.kamil.dev.golos.voice.engine.VoskEngine -> {
+                currentModels = su.kamil.dev.golos.voice.download.VoskModelInfo.AVAILABLE_MODELS
+                execLabel.text = "Vosk CLI (vosk-transcriber):"
+                modLabel.text = "Vosk Acoustic Model:"
+                binaryPathField.text = engine.binaryPath
+                downloadBinaryBtn.isVisible = false
+                browseBinaryBtn.isVisible = true
+                binaryPathField.isVisible = true
+                spokenLangLabel.isVisible = false
+                languageCombo.isVisible = false
+                bilingualLabel.isVisible = false
+                bilingualModeCheck.isVisible = false
+                deviceCombo.isVisible = false
+            }
+            is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> {
+                currentModels = su.kamil.dev.golos.voice.download.SherpaModelInfo.AVAILABLE_MODELS
+                execLabel.text = "Sherpa-ONNX Binary:"
+                modLabel.text = "Sherpa Streaming Model:"
+                binaryPathField.text = engine.binaryPath
+                downloadBinaryBtn.text = "Download sherpa-onnx"
+                downloadBinaryBtn.isVisible = true
+                browseBinaryBtn.isVisible = true
+                binaryPathField.isVisible = true
+                spokenLangLabel.isVisible = false
+                languageCombo.isVisible = false
+                bilingualLabel.isVisible = false
+                bilingualModeCheck.isVisible = false
+                deviceCombo.isVisible = false
+            }
+            else -> {
+                currentModels = emptyList()
+                execLabel.text = "Engine Type:"
+                modLabel.text = "Model Status:"
+                binaryPathField.isVisible = false
+                downloadBinaryBtn.isVisible = false
+                browseBinaryBtn.isVisible = false
+                spokenLangLabel.isVisible = false
+                languageCombo.isVisible = false
+                bilingualLabel.isVisible = false
+                bilingualModeCheck.isVisible = false
+                deviceCombo.isVisible = false
+            }
+        }
+
+        val previousListeners = modelCombo.actionListeners
+        previousListeners.forEach { modelCombo.removeActionListener(it) }
+
+        modelCombo.removeAllItems()
+        if (currentModels.isEmpty()) {
+            modelCombo.addItem("Built-in Simulated Engine")
+        } else {
+            currentModels.forEach { modelCombo.addItem(it.name) }
+        }
+
+        val targetModelId =
+            when (engine) {
+                is WhisperCppEngine -> engine.modelPath.ifEmpty { "base" }
+                is su.kamil.dev.golos.voice.engine.VoskEngine -> engine.modelPath.ifEmpty { "vosk-en" }
+                is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> engine.modelPath.ifEmpty { "PengChengStarling" }
+                else -> ""
+            }
+        val matchIdx =
+            currentModels.indexOfFirst {
+                it.id == targetModelId || it.name == targetModelId || (targetModelId.isNotEmpty() && targetModelId.contains(it.id))
+            }
+        if (matchIdx != -1) {
+            modelCombo.selectedIndex = matchIdx
+        } else if (modelCombo.itemCount > 0) {
+            modelCombo.selectedIndex = 0
+        }
+
+        previousListeners.forEach { modelCombo.addActionListener(it) }
+
+        updateBinaryStatus()
+        updateModelStatus()
+    }
+
     private fun updateBinaryStatus() {
         val configuredPath = binaryPathField.text.trim()
-        val foundPath = binaryManager.findWhisperBinary(configuredPath.ifEmpty { null })
-        val exists = File(foundPath).canExecute()
-
-        if (exists) {
-            binaryStatusLabel.text = "[OK] Ready: $foundPath"
-            binaryStatusLabel.foreground = Color(0, 130, 0)
-            binaryPathField.text = foundPath
-            whisperEngine?.binaryPath = foundPath
-        } else {
-            binaryStatusLabel.text = "[!] Not Found! Click 'Download CLI' or 'Browse' to set executable."
-            binaryStatusLabel.foreground = Color(180, 0, 0)
+        when (val engine = orchestrator.speechEngine) {
+            is WhisperCppEngine -> {
+                val foundPath = binaryManager.findWhisperBinary(configuredPath.ifEmpty { null })
+                val exists = File(foundPath).canExecute()
+                if (exists) {
+                    binaryStatusLabel.text = "[OK] Ready: $foundPath"
+                    binaryStatusLabel.foreground = Color(0, 130, 0)
+                    binaryPathField.text = foundPath
+                    engine.binaryPath = foundPath
+                } else {
+                    binaryStatusLabel.text = "[!] Not Found! Click 'Download CLI' or 'Browse' to set executable."
+                    binaryStatusLabel.foreground = Color(180, 0, 0)
+                }
+            }
+            is su.kamil.dev.golos.voice.engine.VoskEngine -> {
+                val foundPath = voskBinaryManager.findVoskBinary(configuredPath.ifEmpty { null })
+                val exists = voskBinaryManager.isBinaryAvailable(foundPath)
+                if (exists) {
+                    binaryStatusLabel.text = "[OK] Ready: $foundPath"
+                    binaryStatusLabel.foreground = Color(0, 130, 0)
+                    binaryPathField.text = foundPath
+                    engine.binaryPath = foundPath
+                } else {
+                    binaryStatusLabel.text = "[!] Not Found! Install 'vosk-transcriber' (pip install vosk) or click 'Browse'."
+                    binaryStatusLabel.foreground = Color(180, 0, 0)
+                }
+            }
+            is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> {
+                val foundPath = sherpaBinaryManager.findSherpaBinary(configuredPath.ifEmpty { null })
+                val exists = sherpaBinaryManager.isBinaryAvailable(foundPath)
+                if (exists) {
+                    binaryStatusLabel.text = "[OK] Ready: $foundPath"
+                    binaryStatusLabel.foreground = Color(0, 130, 0)
+                    binaryPathField.text = foundPath
+                    engine.binaryPath = foundPath
+                } else {
+                    binaryStatusLabel.text = "[!] Not Found! Click 'Download sherpa-onnx' or click 'Browse'."
+                    binaryStatusLabel.foreground = Color(180, 0, 0)
+                }
+            }
+            else -> {
+                binaryStatusLabel.text = "[OK] Built-in (no binary needed)"
+                binaryStatusLabel.foreground = Color(0, 130, 0)
+            }
         }
     }
 
     private fun startBinaryDownload() {
+        val engine = orchestrator.speechEngine
+        val isSherpa = engine is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine
+        val targetName = if (isSherpa) "sherpa-onnx" else "whisper-cli"
+
         downloadBinaryBtn.isEnabled = false
         downloadProgressBar.value = 0
-        downloadProgressBar.string = "Downloading whisper-cli..."
+        downloadProgressBar.string = "Downloading $targetName..."
 
         coroutineScope.launch {
             val result =
-                binaryManager.downloadPrecompiledBinary { pct, status ->
-                    SwingUtilities.invokeLater {
-                        downloadProgressBar.value = (pct * 100).toInt()
-                        downloadProgressBar.string = status
+                if (isSherpa) {
+                    sherpaBinaryManager.downloadPrecompiledBinary { pct, status ->
+                        SwingUtilities.invokeLater {
+                            downloadProgressBar.value = (pct * 100).toInt()
+                            downloadProgressBar.string = status
+                        }
+                    }
+                } else {
+                    binaryManager.downloadPrecompiledBinary { pct, status ->
+                        SwingUtilities.invokeLater {
+                            downloadProgressBar.value = (pct * 100).toInt()
+                            downloadProgressBar.string = status
+                        }
                     }
                 }
 
@@ -2384,13 +2555,17 @@ class PreferencesDialog(
                 if (result.isSuccess) {
                     val file = result.getOrThrow()
                     binaryPathField.text = file.absolutePath
-                    whisperEngine?.binaryPath = file.absolutePath
+                    if (isSherpa) {
+                        sherpaEngine?.binaryPath = file.absolutePath
+                    } else {
+                        whisperEngine?.binaryPath = file.absolutePath
+                    }
                     updateBinaryStatus()
                     saveCurrentConfig()
-                    downloadProgressBar.string = "whisper-cli Installed"
+                    downloadProgressBar.string = "$targetName Installed"
                     JOptionPane.showMessageDialog(
                         this@PreferencesDialog,
-                        "whisper-cli binary installed successfully:\n${file.absolutePath}",
+                        "$targetName binary installed successfully:\n${file.absolutePath}",
                         "Installation Complete",
                         JOptionPane.INFORMATION_MESSAGE,
                     )
@@ -2398,7 +2573,7 @@ class PreferencesDialog(
                     downloadProgressBar.string = "Download Failed"
                     JOptionPane.showMessageDialog(
                         this@PreferencesDialog,
-                        "Failed to download whisper-cli:\n${result.exceptionOrNull()?.message}",
+                        "Failed to download $targetName:\n${result.exceptionOrNull()?.message}",
                         "Download Error",
                         JOptionPane.ERROR_MESSAGE,
                     )
@@ -2408,13 +2583,26 @@ class PreferencesDialog(
     }
 
     private fun updateModelStatus() {
-        val selectedModel = WhisperModelInfo.AVAILABLE_MODELS[modelCombo.selectedIndex]
+        val selectedModel = currentModels.getOrNull(modelCombo.selectedIndex)
+        if (selectedModel == null) {
+            modelStatusLabel.text = "[OK] " + AppLocalization.tr("status.model_downloaded")
+            modelStatusLabel.foreground = Color(0, 140, 0)
+            downloadModelBtn.isEnabled = false
+            return
+        }
+
+        downloadModelBtn.isEnabled = true
         val isDownloaded = modelDownloader.isModelDownloaded(selectedModel)
         if (isDownloaded) {
             modelStatusLabel.text = "[OK] " + AppLocalization.tr("status.model_downloaded")
             modelStatusLabel.foreground = Color(0, 140, 0)
             downloadModelBtn.text = AppLocalization.tr("btn.redownload")
-            whisperEngine?.modelPath = modelDownloader.getLocalModelFile(selectedModel).absolutePath
+            val localPath = modelDownloader.getLocalModelFile(selectedModel).absolutePath
+            when (val engine = orchestrator.speechEngine) {
+                is WhisperCppEngine -> engine.modelPath = localPath
+                is su.kamil.dev.golos.voice.engine.VoskEngine -> engine.modelPath = localPath
+                is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> engine.modelPath = localPath
+            }
         } else {
             modelStatusLabel.text = "[!] " + AppLocalization.tr("status.model_not_found")
             modelStatusLabel.foreground = Color(180, 0, 0)
@@ -2423,7 +2611,7 @@ class PreferencesDialog(
     }
 
     private fun startModelDownload() {
-        val selectedModel = WhisperModelInfo.AVAILABLE_MODELS[modelCombo.selectedIndex]
+        val selectedModel = currentModels.getOrNull(modelCombo.selectedIndex) ?: return
         downloadModelBtn.isEnabled = false
         downloadProgressBar.value = 0
         downloadProgressBar.string = "Connecting..."
@@ -2448,13 +2636,17 @@ class PreferencesDialog(
                 downloadModelBtn.isEnabled = true
                 if (result.isSuccess) {
                     val file = result.getOrThrow()
-                    whisperEngine?.modelPath = file.absolutePath
+                    when (val engine = orchestrator.speechEngine) {
+                        is WhisperCppEngine -> engine.modelPath = file.absolutePath
+                        is su.kamil.dev.golos.voice.engine.VoskEngine -> engine.modelPath = file.absolutePath
+                        is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> engine.modelPath = file.absolutePath
+                    }
                     updateModelStatus()
                     saveCurrentConfig()
                     downloadProgressBar.string = "Completed"
                     JOptionPane.showMessageDialog(
                         this@PreferencesDialog,
-                        "Whisper model downloaded successfully:\n${file.absolutePath}",
+                        "Model downloaded successfully:\n${file.absolutePath}",
                         "Download Complete",
                         JOptionPane.INFORMATION_MESSAGE,
                     )
@@ -2613,12 +2805,28 @@ class PreferencesDialog(
             val idx = availableEngines.indexOfFirst { it.id == c.engine.selectedId }
             engineCombo.selectedIndex = if (idx != -1) idx else 0
         }
+        val chosenEngine = availableEngines.getOrNull(engineCombo.selectedIndex) ?: availableEngines.first()
+        orchestrator.speechEngine = chosenEngine
 
-        // Whisper details
         if (c.engine.whisper.binaryPath.isNotEmpty()) {
-            binaryPathField.text = c.engine.whisper.binaryPath
             whisperEngine?.binaryPath = c.engine.whisper.binaryPath
         }
+        if (c.engine.whisper.modelPath.isNotEmpty()) {
+            whisperEngine?.modelPath = c.engine.whisper.modelPath
+        }
+        if (c.engine.vosk.binaryPath.isNotEmpty()) {
+            voskEngine?.binaryPath = c.engine.vosk.binaryPath
+        }
+        if (c.engine.vosk.modelPath.isNotEmpty()) {
+            voskEngine?.modelPath = c.engine.vosk.modelPath
+        }
+        if (c.engine.sherpa.binaryPath.isNotEmpty()) {
+            sherpaEngine?.binaryPath = c.engine.sherpa.binaryPath
+        }
+        if (c.engine.sherpa.modelPath.isNotEmpty()) {
+            sherpaEngine?.modelPath = c.engine.sherpa.modelPath
+        }
+
         val langIdx = languageCodes.indexOf(c.engine.whisper.language)
         if (langIdx != -1) languageCombo.selectedIndex = langIdx
         deviceCombo.selectedIndex = if (c.engine.whisper.device == "GPU") 1 else 0
@@ -2626,8 +2834,7 @@ class PreferencesDialog(
         bilingualModeCheck.isSelected = c.engine.whisper.bilingualMode
         whisperEngine?.bilingualMode = c.engine.whisper.bilingualMode
 
-        updateBinaryStatus()
-        updateModelStatus()
+        updateEngineUiForSelectedEngine()
         renderStatus(orchestrator.state.value)
     }
 
@@ -2665,10 +2872,38 @@ class PreferencesDialog(
                             WhisperSettings(
                                 binaryPath = whisperEngine?.binaryPath ?: "",
                                 modelPath = whisperEngine?.modelPath ?: "",
-                                modelName = WhisperModelInfo.AVAILABLE_MODELS.getOrNull(modelCombo.selectedIndex)?.name ?: "base",
+                                modelName =
+                                    if (orchestrator.speechEngine is WhisperCppEngine) {
+                                        currentModels.getOrNull(modelCombo.selectedIndex)?.id ?: "base"
+                                    } else {
+                                        settingsManager.load().engine.whisper.modelName
+                                    },
                                 language = whisperEngine?.language ?: "auto",
                                 device = whisperEngine?.device?.name ?: "CPU",
                                 bilingualMode = bilingualModeCheck.isSelected,
+                            ),
+                        vosk =
+                            su.kamil.dev.golos.core.model.VoskSettings(
+                                binaryPath = voskEngine?.binaryPath ?: "vosk-transcriber",
+                                modelPath = voskEngine?.modelPath ?: "",
+                                modelName =
+                                    if (orchestrator.speechEngine is su.kamil.dev.golos.voice.engine.VoskEngine) {
+                                        currentModels.getOrNull(modelCombo.selectedIndex)?.id ?: "vosk-en"
+                                    } else {
+                                        settingsManager.load().engine.vosk.modelName
+                                    },
+                            ),
+                        sherpa =
+                            su.kamil.dev.golos.core.model.SherpaSettings(
+                                binaryPath = sherpaEngine?.binaryPath ?: "sherpa-onnx",
+                                modelPath = sherpaEngine?.modelPath ?: "",
+                                modelName =
+                                    if (orchestrator.speechEngine is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine) {
+                                        currentModels.getOrNull(modelCombo.selectedIndex)?.id ?: "PengChengStarling"
+                                    } else {
+                                        settingsManager.load().engine.sherpa.modelName
+                                    },
+                                threads = sherpaEngine?.threads ?: 4,
                             ),
                     ),
                 autostart =

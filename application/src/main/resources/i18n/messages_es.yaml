@@ -1,6 +1,6 @@
 tab.dashboard: "Panel"
 tab.settings: "Configuración"
-tab.whisper: "Whisper y Modelos"
+tab.whisper: "Motor y Modelos"
 tab.history: "Historial"
 tab.batch: "Procesamiento por lotes"
 bulb.app.title: "APP"
