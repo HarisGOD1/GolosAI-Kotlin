@@ -73,6 +73,9 @@ interface TextInjectorPort {
         text: String,
         config: InjectionConfig = InjectionConfig(),
     ): Result<Unit>
+
+    val lastInjectionMethod: su.kamil.dev.golos.core.model.InjectionMethod?
+        get() = null
 }
 
 /**

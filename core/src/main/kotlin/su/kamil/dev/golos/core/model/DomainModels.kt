@@ -110,6 +110,18 @@ data class InjectionConfig(
 )
 
 /**
+ * Concrete mechanism executed to deliver text to the target application (Criterion K-25).
+ */
+enum class InjectionMethod {
+    DIRECT_TYPING_XTEST,
+    DIRECT_TYPING_XDOTOOL,
+    CLIPBOARD_PASTE_RESTORE,
+    CLIPBOARD_PASTE_PERSISTENT,
+    CLIPBOARD_FALLBACK_NO_INPUT,
+    SIMULATED_TEST,
+}
+
+/**
  * Real-time audio warning categories (Criteria C-08, E-07).
  */
 enum class AudioWarningType {

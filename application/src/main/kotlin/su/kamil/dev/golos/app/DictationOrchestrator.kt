@@ -337,6 +337,20 @@ class DictationOrchestrator(
                                 currentActiveWindow,
                                 effectiveProfile,
                             )
+                            val injectionWindow = activeWindowDetector.detectActiveWindow()
+                            if (injectionWindow.windowTitle != currentActiveWindow.windowTitle ||
+                                injectionWindow.appName != currentActiveWindow.appName
+                            ) {
+                                logger.info(
+                                    "Active window changed during recognition: from '{}' ({}) to '{}' ({}) (Criterion K-24)",
+                                    currentActiveWindow.windowTitle,
+                                    currentActiveWindow.appName,
+                                    injectionWindow.windowTitle,
+                                    injectionWindow.appName,
+                                )
+                                currentActiveWindow = injectionWindow
+                            }
+
                             if (injectionConfig.timing == su.kamil.dev.golos.core.model.InjectionTiming.ON_THE_FLY) {
                                 val finalWords = result.text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
                                 val deltaText =
@@ -354,6 +368,10 @@ class DictationOrchestrator(
                             } else {
                                 textInjector.injectText(result.text, injectionConfig)
                             }
+                            logger.info(
+                                "Delivered dictation using injection method: [{}] (Criterion K-25)",
+                                textInjector.lastInjectionMethod ?: "DEFAULT",
+                            )
                         } else {
                             logger.info("Transcription result is blank; skipping injection.")
                         }

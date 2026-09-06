@@ -431,5 +431,57 @@ class DictationOrchestratorTest {
             assertEquals(su.kamil.dev.golos.core.model.ApplicationProfile.MAIL, orchestrator.cycleManualProfile())
             assertEquals(su.kamil.dev.golos.core.model.ApplicationProfile.CODE, orchestrator.cycleManualProfile())
         }
+
+    @Test
+    fun `test active window change during processing is detected and updated - Criterion K-24`() =
+        runTest {
+            val startWindow =
+                su.kamil.dev.golos.core.model.ActiveWindowInfo(
+                    appName = "telegram",
+                    windowTitle = "Telegram Desktop",
+                    profile = su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER,
+                )
+            val switchedWindow =
+                su.kamil.dev.golos.core.model.ActiveWindowInfo(
+                    appName = "code",
+                    windowTitle = "Main.kt - GolosAI - Visual Studio Code",
+                    profile = su.kamil.dev.golos.core.model.ApplicationProfile.CODE,
+                )
+
+            var currentWindowToReturn = startWindow
+            val dynamicDetector =
+                object : su.kamil.dev.golos.core.ports.ActiveWindowDetectorPort {
+                    override fun detectActiveWindow(): su.kamil.dev.golos.core.model.ActiveWindowInfo =
+                        currentWindowToReturn
+                }
+
+            val fakeInjector = FakeTextInjector()
+            val orchestrator =
+                DictationOrchestrator(
+                    stateMachine = DictationStateMachine(),
+                    audioCapture = FakeAudioCapture(),
+                    speechEngine = MockSpeechToTextEngine(),
+                    hotkeyHook = SimulatedHotkeyHook(),
+                    textInjector = fakeInjector,
+                    activeWindowDetector = dynamicDetector,
+                    scope = this,
+                )
+
+            // User starts speaking in Telegram
+            orchestrator.onPushToTalkPressed()
+            assertEquals("telegram", orchestrator.currentActiveWindow.appName)
+
+            // While speaking / processing, user switches window to VS Code
+            currentWindowToReturn = switchedWindow
+
+            // User releases hotkey, triggering transcription and injection
+            orchestrator.onPushToTalkReleased()
+            testScheduler.advanceUntilIdle()
+
+            // Verify active window was updated to the switched window before injection (Criterion K-24)
+            assertEquals("code", orchestrator.currentActiveWindow.appName)
+            assertEquals("Main.kt - GolosAI - Visual Studio Code", orchestrator.currentActiveWindow.windowTitle)
+            assertTrue(fakeInjector.injected.isNotEmpty())
+        }
 }
 
