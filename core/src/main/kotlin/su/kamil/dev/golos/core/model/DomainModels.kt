@@ -243,3 +243,37 @@ data class GpuDeviceInfo(
         get() = "GPU $index: $name (${type.name.lowercase().replaceFirstChar { it.uppercase() }})"
 }
 
+/**
+ * Real-time hardware resource consumption and capacity for a GPU adapter.
+ */
+data class GpuResourceUsage(
+    val totalMemoryMb: Long = 0L,
+    val usedMemoryMb: Long = 0L,
+    val freeMemoryMb: Long = 0L,
+    val utilizationPercent: Int = -1,
+    val temperatureC: Int = -1,
+)
+
+/**
+ * Diagnostic assessment of GPU hardware, driver runtime, and device node access permissions.
+ */
+data class GpuAvailabilityStatus(
+    val isAvailable: Boolean,
+    val provider: String,
+    val activeGpu: GpuDeviceInfo?,
+    val resourceUsage: GpuResourceUsage,
+    val issues: List<String> = emptyList(),
+    val statusMessage: String = "",
+)
+
+/**
+ * Result of requesting GPU compute and memory resources for a speech model.
+ */
+data class GpuResourceAllocation(
+    val granted: Boolean,
+    val allocatedLayers: Int,
+    val fallbackToCpu: Boolean,
+    val requiredVramMb: Long,
+    val availableVramMb: Long,
+    val message: String,
+)

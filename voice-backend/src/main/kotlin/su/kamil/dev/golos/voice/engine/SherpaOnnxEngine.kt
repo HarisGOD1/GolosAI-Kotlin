@@ -9,6 +9,7 @@ import su.kamil.dev.golos.core.model.AudioChunk
 import su.kamil.dev.golos.core.model.PostProcessingSettings
 import su.kamil.dev.golos.core.model.TranscriptionResult
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
+import su.kamil.dev.golos.system.hardware.GpuManager
 import su.kamil.dev.golos.voice.audio.AudioPreprocessor
 import su.kamil.dev.golos.voice.download.SherpaBinaryManager
 import su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor
@@ -144,14 +145,29 @@ class SherpaOnnxEngine(
                     "--num-threads=$threads",
                 )
 
+            var effectiveGpuIndex = -1
             if (device.equals("GPU", ignoreCase = true)) {
-                val isMac = System.getProperty("os.name").lowercase().contains("mac")
-                if (isMac) {
-                    cmd.add("--provider=coreml")
+                val allocation = GpuManager.requestGpuResources(File(modelPath), selectedGpuId)
+                logger.info(
+                    "Sherpa GPU resource allocation: granted={}, fallback={}, message={}",
+                    allocation.granted,
+                    allocation.fallbackToCpu,
+                    allocation.message,
+                )
+                if (allocation.fallbackToCpu || !allocation.granted) {
+                    cmd.add("--provider=cpu")
                 } else {
-                    cmd.add("--provider=cuda")
-                    val devIdx = if (selectedGpuId >= 0) selectedGpuId else 0
-                    cmd.add("--device=$devIdx")
+                    val isMac = System.getProperty("os.name").lowercase().contains("mac")
+                    if (isMac) {
+                        cmd.add("--provider=coreml")
+                    } else {
+                        cmd.add("--provider=cuda")
+                        val gpus = GpuManager.detectGpus()
+                        val targetGpu = GpuManager.getActiveGpu(selectedGpuId, gpus)
+                        effectiveGpuIndex = targetGpu.index
+                        val devIdx = if (effectiveGpuIndex >= 0) effectiveGpuIndex else 0
+                        cmd.add("--device=$devIdx")
+                    }
                 }
             } else {
                 cmd.add("--provider=cpu")
@@ -166,8 +182,8 @@ class SherpaOnnxEngine(
             val rawOutput =
                 try {
                     val pb = ProcessBuilder(cmd).redirectErrorStream(true)
-                    if (device.equals("GPU", ignoreCase = true) && selectedGpuId >= 0) {
-                        pb.environment()["CUDA_VISIBLE_DEVICES"] = selectedGpuId.toString()
+                    if (device.equals("GPU", ignoreCase = true) && effectiveGpuIndex >= 0) {
+                        pb.environment()["CUDA_VISIBLE_DEVICES"] = effectiveGpuIndex.toString()
                     }
                     val process = pb.start()
                     val stdoutDeferred = async(Dispatchers.IO) { process.inputStream.bufferedReader().readText() }

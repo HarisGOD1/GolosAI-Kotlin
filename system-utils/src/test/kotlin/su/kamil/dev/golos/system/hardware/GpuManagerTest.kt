@@ -105,4 +105,31 @@ class GpuManagerTest {
         assertTrue(detected.isNotEmpty())
         assertTrue(detected.first().name.isNotBlank())
     }
+
+    @Test
+    fun `test checkGpuAvailability returns valid status and provider`() {
+        val status = GpuManager.checkGpuAvailability()
+        assertNotNull(status)
+        assertNotNull(status.provider)
+        assertNotNull(status.resourceUsage)
+        assertTrue(status.statusMessage.isNotBlank())
+    }
+
+    @Test
+    fun `test queryGpuResources returns valid usage structure`() {
+        val usage = GpuManager.queryGpuResources()
+        assertNotNull(usage)
+        assertTrue(usage.totalMemoryMb >= 0L)
+        assertTrue(usage.freeMemoryMb >= 0L)
+        assertTrue(usage.usedMemoryMb >= 0L)
+    }
+
+    @Test
+    fun `test requestGpuResources handles nonexistent or null model gracefully`() {
+        val allocation = GpuManager.requestGpuResources(null)
+        assertNotNull(allocation)
+        assertTrue(allocation.requiredVramMb >= 400L)
+        assertTrue(allocation.allocatedLayers >= 0)
+        assertTrue(allocation.message.isNotBlank())
+    }
 }

@@ -133,4 +133,3 @@ data class GolosConfig(
     val autostart: AutostartSettings = AutostartSettings(),
     val postProcessing: PostProcessingSettings = PostProcessingSettings(),
 )
-

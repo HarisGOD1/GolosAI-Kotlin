@@ -359,10 +359,11 @@ class VoiceBackendTest {
 
     @Test
     fun `test SherpaBinaryManager discovers binary in nested subdirectories`() {
-        val tempBinDir = java.io.File.createTempFile("sherpa_test_bin_", "").apply {
-            delete()
-            mkdirs()
-        }
+        val tempBinDir =
+            java.io.File.createTempFile("sherpa_test_bin_", "").apply {
+                delete()
+                mkdirs()
+            }
         try {
             val nestedSubdir = java.io.File(tempBinDir, "sherpa-onnx-v1.13.7-linux-x64-static/bin")
             nestedSubdir.mkdirs()

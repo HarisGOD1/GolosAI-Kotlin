@@ -153,8 +153,9 @@ class VoskBinaryManager(
                 if (isWin) {
                     launcherFile.writeText("@echo off\r\njava -cp \"%~dp0vosk.jar\" org.vosk.LibVosk %*\r\n")
                 } else {
-                    val script = "#!/bin/sh\nDIR=\"\$(cd \"\$(dirname \"\$0\")\" && pwd)\"\n" +
-                        "exec java -cp \"\$DIR/vosk.jar\" org.vosk.LibVosk \"\$@\"\n"
+                    val script =
+                        "#!/bin/sh\nDIR=\"\$(cd \"\$(dirname \"\$0\")\" && pwd)\"\n" +
+                            "exec java -cp \"\$DIR/vosk.jar\" org.vosk.LibVosk \"\$@\"\n"
                     launcherFile.writeText(script)
                     launcherFile.setExecutable(true)
                 }

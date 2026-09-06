@@ -68,7 +68,8 @@ class SherpaBinaryManager(
                     return subBin.absolutePath
                 }
             }
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
 
         val systemPaths =
             listOf(

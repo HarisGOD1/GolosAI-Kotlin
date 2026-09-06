@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory
 import su.kamil.dev.golos.core.model.AudioChunk
 import su.kamil.dev.golos.core.model.TranscriptionResult
 import su.kamil.dev.golos.core.ports.SpeechToTextEngine
+import su.kamil.dev.golos.system.hardware.GpuManager
 import su.kamil.dev.golos.voice.audio.AudioPreprocessor
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -117,11 +118,31 @@ class WhisperCppEngine(
                 cmd.add("--no-timestamps")
             }
 
+            var effectiveGpuIndex = -1
             if (device == InferenceDevice.CPU) {
                 cmd.add("--no-gpu")
-            } else if (selectedGpuId >= 0) {
-                cmd.add("--device")
-                cmd.add(selectedGpuId.toString())
+            } else {
+                val allocation = GpuManager.requestGpuResources(File(modelPath), selectedGpuId)
+                logger.info(
+                    "Whisper GPU resource allocation: granted={}, layers={}, fallback={}, message={}",
+                    allocation.granted,
+                    allocation.allocatedLayers,
+                    allocation.fallbackToCpu,
+                    allocation.message,
+                )
+                if (allocation.fallbackToCpu || !allocation.granted) {
+                    cmd.add("--no-gpu")
+                } else {
+                    cmd.add("--gpu-layers")
+                    cmd.add(allocation.allocatedLayers.toString())
+                    val gpus = GpuManager.detectGpus()
+                    val targetGpu = GpuManager.getActiveGpu(selectedGpuId, gpus)
+                    effectiveGpuIndex = targetGpu.index
+                    if (effectiveGpuIndex >= 0) {
+                        cmd.add("--device")
+                        cmd.add(effectiveGpuIndex.toString())
+                    }
+                }
             }
 
             if (bilingualMode && language != "auto" && language != "en") {
@@ -166,8 +187,8 @@ class WhisperCppEngine(
             )
 
             val pb = ProcessBuilder(cmd).redirectErrorStream(false)
-            if (device == InferenceDevice.GPU && selectedGpuId >= 0) {
-                pb.environment()["CUDA_VISIBLE_DEVICES"] = selectedGpuId.toString()
+            if (device == InferenceDevice.GPU && effectiveGpuIndex >= 0) {
+                pb.environment()["CUDA_VISIBLE_DEVICES"] = effectiveGpuIndex.toString()
             }
 
             val process =

@@ -140,8 +140,14 @@ class WhisperBinaryManager(
                         "https://github.com/ggml-org/whisper.cpp/releases/download/b4938/whisper-bin-ubuntu-arm64.tar.gz"
                     os.contains("linux") ->
                         "https://github.com/ggml-org/whisper.cpp/releases/download/b4938/whisper-bin-ubuntu-x64.tar.gz"
-                    os.contains("win") ->
-                        "https://github.com/ggml-org/whisper.cpp/releases/download/b4938/whisper-bin-x64.zip"
+                    os.contains("win") -> {
+                        val hasNvidia = su.kamil.dev.golos.system.hardware.GpuManager.detectGpus().any { it.vendor == "NVIDIA" }
+                        if (hasNvidia) {
+                            "https://github.com/ggml-org/whisper.cpp/releases/download/b4938/whisper-cublas-12.4.0-bin-x64.zip"
+                        } else {
+                            "https://github.com/ggml-org/whisper.cpp/releases/download/b4938/whisper-bin-x64.zip"
+                        }
+                    }
                     os.contains("mac") ->
                         "https://github.com/ggml-org/whisper.cpp/releases/download/b4938/whisper-b4938-xcframework.zip"
                     else ->

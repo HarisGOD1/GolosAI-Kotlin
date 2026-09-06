@@ -284,7 +284,9 @@ class PreferencesDialog(
     private val deviceCombo = JComboBox<String>()
     private val gpuLabel = JLabel(AppLocalization.tr("label.gpu_selection"))
     private val gpuCombo = JComboBox<String>()
+    private val btnCheckGpu = JButton(AppLocalization.tr("btn.gpu_check"))
     private val gpuStatusLabel = JLabel()
+    private val gpuBox = JPanel(BorderLayout(4, 4))
     private val recentGpuBadge = JLabel()
     private var detectedGpus: List<GpuDeviceInfo> = emptyList()
     private var selectedGpuIndex: Int = -1
@@ -899,11 +901,15 @@ class PreferencesDialog(
     private fun refreshGpuUi() {
         val isGpuSelected = deviceCombo.selectedIndex == 1
         gpuCombo.isEnabled = isGpuSelected
+        btnCheckGpu.isEnabled = isGpuSelected
         if (!isGpuSelected) {
             gpuStatusLabel.text = AppLocalization.tr("label.gpu_status_cpu")
+            gpuStatusLabel.foreground = Color(100, 110, 125)
             recentGpuBadge.text = "[CPU]"
         } else {
-            val active = GpuManager.getActiveGpu(selectedGpuIndex, detectedGpus)
+            val availability = GpuManager.checkGpuAvailability(selectedGpuIndex)
+            val active = availability.activeGpu ?: GpuManager.getActiveGpu(selectedGpuIndex, detectedGpus)
+            val res = availability.resourceUsage
             val typeStr =
                 when (active.type) {
                     GpuType.DEDICATED -> AppLocalization.tr("opt.gpu.dedicated")
@@ -911,8 +917,28 @@ class PreferencesDialog(
                     else -> ""
                 }
             val activeText = "${active.name}${if (typeStr.isNotEmpty()) " ($typeStr)" else ""}"
-            gpuStatusLabel.text = "${AppLocalization.tr("label.gpu_active")}: $activeText"
-            recentGpuBadge.text = "[GPU: ${active.name}]"
+            val resText =
+                if (res.totalMemoryMb > 0L) {
+                    " | VRAM: ${res.freeMemoryMb}/${res.totalMemoryMb} MB" +
+                        (if (res.utilizationPercent >= 0) " (${res.utilizationPercent}%)" else "")
+                } else {
+                    ""
+                }
+
+            if (!availability.isAvailable) {
+                gpuStatusLabel.foreground = Color(200, 50, 50)
+                gpuStatusLabel.text = "${AppLocalization.tr("label.gpu_unavailable")}: ${availability.statusMessage}"
+                recentGpuBadge.text = "[CPU: GPU Unavailable]"
+            } else if (availability.issues.isNotEmpty()) {
+                gpuStatusLabel.foreground = Color(210, 130, 20)
+                gpuStatusLabel.text = "${availability.provider}: $activeText$resText (${availability.issues.first()})"
+                recentGpuBadge.text = "[GPU: ${active.name}]"
+            } else {
+                gpuStatusLabel.foreground = Color(50, 140, 60)
+                gpuStatusLabel.text = "${AppLocalization.tr("label.gpu_active")}: [${availability.provider}] $activeText$resText"
+                val vramBadge = if (res.freeMemoryMb > 0L) " ${res.freeMemoryMb}MB free" else ""
+                recentGpuBadge.text = "[GPU: ${active.name}$vramBadge]"
+            }
         }
     }
 
@@ -1048,6 +1074,7 @@ class PreferencesDialog(
                 gpuCombo.selectedIndex = 0
             }
             gpuLabel.text = AppLocalization.tr("label.gpu_selection")
+            btnCheckGpu.text = AppLocalization.tr("btn.gpu_check")
             refreshGpuUi()
 
             val langItems =
@@ -1959,7 +1986,7 @@ class PreferencesDialog(
         panel.add(gpuLabel, gbc)
         gbc.gridx = 1
         gbc.weightx = 0.68
-        val gpuBox = JPanel(BorderLayout(4, 4))
+        gpuBox.removeAll()
         gpuBox.isOpaque = false
         gpuCombo.addActionListener {
             if (isUpdatingLocalization) return@addActionListener
@@ -1974,7 +2001,52 @@ class PreferencesDialog(
             refreshGpuUi()
             saveCurrentConfig()
         }
-        gpuBox.add(gpuCombo, BorderLayout.NORTH)
+        btnCheckGpu.addActionListener {
+            val availability = GpuManager.checkGpuAvailability(selectedGpuIndex)
+            val res = availability.resourceUsage
+            val details = StringBuilder()
+            val statusStr =
+                if (availability.isAvailable) {
+                    AppLocalization.tr("label.gpu_available")
+                } else {
+                    AppLocalization.tr("label.gpu_unavailable")
+                }
+            details.append("Status: ").append(statusStr).append("\n")
+            details.append("Provider: ").append(availability.provider).append("\n")
+            val activeGpu = availability.activeGpu
+            if (activeGpu != null) {
+                details.append("Device: ").append(activeGpu.name).append("\n")
+                details.append("Type: ").append(activeGpu.type).append("\n")
+            }
+            if (res.totalMemoryMb > 0L) {
+                details.append("Total VRAM: ").append(res.totalMemoryMb).append(" MB\n")
+                details.append("Used VRAM: ").append(res.usedMemoryMb).append(" MB\n")
+                details.append("Free VRAM: ").append(res.freeMemoryMb).append(" MB\n")
+            }
+            if (res.utilizationPercent >= 0) {
+                details.append("GPU Load: ").append(res.utilizationPercent).append("%\n")
+            }
+            if (res.temperatureC >= 0) {
+                details.append("Temperature: ").append(res.temperatureC).append(" C\n")
+            }
+            if (availability.issues.isNotEmpty()) {
+                details.append("\nIssues:\n")
+                availability.issues.forEach { details.append(" - ").append(it).append("\n") }
+            }
+            JOptionPane.showMessageDialog(
+                this,
+                details.toString(),
+                AppLocalization.tr("label.gpu_resources"),
+                if (availability.isAvailable) JOptionPane.INFORMATION_MESSAGE else JOptionPane.WARNING_MESSAGE,
+            )
+            refreshGpuUi()
+        }
+        styleMinimalistButton(btnCheckGpu)
+        val topGpuPanel = JPanel(BorderLayout(6, 0))
+        topGpuPanel.isOpaque = false
+        topGpuPanel.add(gpuCombo, BorderLayout.CENTER)
+        topGpuPanel.add(btnCheckGpu, BorderLayout.EAST)
+        gpuBox.add(topGpuPanel, BorderLayout.NORTH)
         gpuStatusLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
         gpuStatusLabel.foreground = Color(100, 110, 125)
         gpuBox.add(gpuStatusLabel, BorderLayout.SOUTH)
@@ -2490,7 +2562,11 @@ class PreferencesDialog(
                 languageCombo.isVisible = true
                 bilingualLabel.isVisible = true
                 bilingualModeCheck.isVisible = true
+                devLabel.isVisible = true
                 deviceCombo.isVisible = true
+                gpuLabel.isVisible = true
+                gpuBox.isVisible = true
+                deviceCombo.selectedIndex = if (engine.device == InferenceDevice.GPU) 1 else 0
             }
             is su.kamil.dev.golos.voice.engine.VoskEngine -> {
                 currentModels = su.kamil.dev.golos.voice.download.VoskModelInfo.AVAILABLE_MODELS
@@ -2505,7 +2581,10 @@ class PreferencesDialog(
                 languageCombo.isVisible = false
                 bilingualLabel.isVisible = false
                 bilingualModeCheck.isVisible = false
+                devLabel.isVisible = false
                 deviceCombo.isVisible = false
+                gpuLabel.isVisible = false
+                gpuBox.isVisible = false
             }
             is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> {
                 currentModels = su.kamil.dev.golos.voice.download.SherpaModelInfo.AVAILABLE_MODELS
@@ -2520,7 +2599,11 @@ class PreferencesDialog(
                 languageCombo.isVisible = false
                 bilingualLabel.isVisible = false
                 bilingualModeCheck.isVisible = false
-                deviceCombo.isVisible = false
+                devLabel.isVisible = true
+                deviceCombo.isVisible = true
+                gpuLabel.isVisible = true
+                gpuBox.isVisible = true
+                deviceCombo.selectedIndex = if (engine.device.equals("GPU", ignoreCase = true)) 1 else 0
             }
             else -> {
                 currentModels = emptyList()
@@ -2533,9 +2616,13 @@ class PreferencesDialog(
                 languageCombo.isVisible = false
                 bilingualLabel.isVisible = false
                 bilingualModeCheck.isVisible = false
+                devLabel.isVisible = false
                 deviceCombo.isVisible = false
+                gpuLabel.isVisible = false
+                gpuBox.isVisible = false
             }
         }
+        refreshGpuUi()
 
         val previousListeners = modelCombo.actionListeners
         previousListeners.forEach { modelCombo.removeActionListener(it) }
@@ -2943,8 +3030,9 @@ class PreferencesDialog(
         }
 
         val langIdx = languageCodes.indexOf(c.engine.whisper.language)
-        if (langIdx != -1) languageCombo.selectedIndex = langIdx
-        deviceCombo.selectedIndex = if (c.engine.whisper.device == "GPU") 1 else 0
+        val isSherpaSelected = c.engine.selectedId == "sherpa"
+        val activeDev = if (isSherpaSelected) c.engine.sherpa.device else c.engine.whisper.device
+        deviceCombo.selectedIndex = if (activeDev.equals("GPU", ignoreCase = true)) 1 else 0
 
         selectedGpuIndex = c.hardware.selectedGpuIndex
         if (selectedGpuIndex >= 0) {
@@ -3012,7 +3100,12 @@ class PreferencesDialog(
                                         settingsManager.load().engine.whisper.modelName
                                     },
                                 language = whisperEngine?.language ?: "auto",
-                                device = whisperEngine?.device?.name ?: "CPU",
+                                device =
+                                    if (orchestrator.speechEngine is WhisperCppEngine) {
+                                        if (deviceCombo.selectedIndex == 1) "GPU" else "CPU"
+                                    } else {
+                                        whisperEngine?.device?.name ?: "CPU"
+                                    },
                                 bilingualMode = bilingualModeCheck.isSelected,
                                 selectedGpuId = selectedGpuIndex,
                             ),
@@ -3038,7 +3131,12 @@ class PreferencesDialog(
                                         settingsManager.load().engine.sherpa.modelName
                                     },
                                 threads = sherpaEngine?.threads ?: 4,
-                                device = if (deviceCombo.selectedIndex == 1) "GPU" else "CPU",
+                                device =
+                                    if (orchestrator.speechEngine is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine) {
+                                        if (deviceCombo.selectedIndex == 1) "GPU" else "CPU"
+                                    } else {
+                                        sherpaEngine?.device ?: "CPU"
+                                    },
                                 selectedGpuId = selectedGpuIndex,
                             ),
                     ),

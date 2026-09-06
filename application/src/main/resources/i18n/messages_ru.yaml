@@ -114,3 +114,7 @@ label.gpu_status_cpu: "Только ЦП (ускорение GPU отключе�
 opt.gpu.auto: "Авто (предпочитать дискретный)"
 opt.gpu.integrated: "Встроенный"
 opt.gpu.dedicated: "Дискретный"
+btn.gpu_check: "Проверить ресурсы GPU"
+label.gpu_resources: "Ресурсы GPU"
+label.gpu_available: "Доступно"
+label.gpu_unavailable: "Недоступно"

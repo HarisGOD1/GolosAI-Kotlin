@@ -165,7 +165,10 @@ class VoskEngine(
             )
         }
 
-    private fun getModel(jarFile: File, modelDir: File): Pair<java.net.URLClassLoader, Any> =
+    private fun getModel(
+        jarFile: File,
+        modelDir: File,
+    ): Pair<java.net.URLClassLoader, Any> =
         synchronized(modelLock) {
             val cl =
                 cachedClassLoader ?: java.net.URLClassLoader(
@@ -194,7 +197,8 @@ class VoskEngine(
                     val closeMethod = cachedModel!!.javaClass.getMethod("close")
                     closeMethod.invoke(cachedModel)
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
             cachedModel = null
             cachedModelPath = null
         }
@@ -260,14 +264,18 @@ class VoskEngine(
             } finally {
                 try {
                     closeRec.invoke(rec)
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                }
             }
         } catch (e: Exception) {
             logger.error("In-process Vosk transcription failed: {}", e.message)
             ""
         }
 
-    private fun extractJsonField(json: String, fieldName: String): String {
+    private fun extractJsonField(
+        json: String,
+        fieldName: String,
+    ): String {
         val regex = """"$fieldName"\s*:\s*"([^"]*)"""".toRegex()
         val match = regex.find(json)
         return match?.groups?.get(1)?.value ?: ""
@@ -310,4 +318,3 @@ class VoskEngine(
             textFromFile.ifEmpty { rawOutput.trim() }
         }
 }
-
