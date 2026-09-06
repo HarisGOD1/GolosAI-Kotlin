@@ -10,10 +10,6 @@ import javax.swing.SwingUtilities
 class AudioVuMeterWidgetTest {
     @Test
     fun `test AudioVuMeterWidget updates level and warning states`() {
-        org.junit.jupiter.api.Assumptions.assumeFalse(
-            java.awt.GraphicsEnvironment.isHeadless(),
-            "Skipping Swing widget test in headless environment",
-        )
         SwingUtilities.invokeAndWait {
             val widget = AudioVuMeterWidget(showTitle = true)
             assertEquals("Audio Input Level:", widget.titleLabel.text)

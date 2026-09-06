@@ -1563,9 +1563,9 @@ class PreferencesDialog(
         }
         panel.add(insertionModeCombo, gbc)
 
-        // 6. Insertion Timing (On the Fly vs On Release)
+        // 9. Insertion Timing (On the Fly vs On Release)
         gbc.gridx = 0
-        gbc.gridy = 7
+        gbc.gridy = 9
         gbc.weightx = 0.32
         panel.add(timingLabel, gbc)
         gbc.gridx = 1

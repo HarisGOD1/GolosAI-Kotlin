@@ -65,8 +65,9 @@ class GuiSnapshotTest {
 
     @Test
     fun `render UI snapshots of all screens to PNG`() {
-        val headless = System.getProperty("java.awt.headless") == "true" ||
-            java.awt.GraphicsEnvironment.isHeadless()
+        val headless =
+            System.getProperty("java.awt.headless") == "true" ||
+                java.awt.GraphicsEnvironment.isHeadless()
         org.junit.jupiter.api.Assumptions.assumeFalse(
             headless,
             "Skipping GUI snapshot test in headless environment",
