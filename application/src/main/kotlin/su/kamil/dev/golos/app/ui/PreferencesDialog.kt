@@ -2399,10 +2399,11 @@ class PreferencesDialog(
             }
             is su.kamil.dev.golos.voice.engine.VoskEngine -> {
                 currentModels = su.kamil.dev.golos.voice.download.VoskModelInfo.AVAILABLE_MODELS
-                execLabel.text = "Vosk CLI (vosk-transcriber):"
+                execLabel.text = "Vosk Binary / Library:"
                 modLabel.text = "Vosk Acoustic Model:"
                 binaryPathField.text = engine.binaryPath
-                downloadBinaryBtn.isVisible = false
+                downloadBinaryBtn.text = "Download Vosk"
+                downloadBinaryBtn.isVisible = true
                 browseBinaryBtn.isVisible = true
                 binaryPathField.isVisible = true
                 spokenLangLabel.isVisible = false
@@ -2499,7 +2500,7 @@ class PreferencesDialog(
                     binaryPathField.text = foundPath
                     engine.binaryPath = foundPath
                 } else {
-                    binaryStatusLabel.text = "[!] Not Found! Install 'vosk-transcriber' (pip install vosk) or click 'Browse'."
+                    binaryStatusLabel.text = "[!] Not Found! Click 'Download Vosk' or click 'Browse'."
                     binaryStatusLabel.foreground = Color(180, 0, 0)
                 }
             }
@@ -2525,8 +2526,12 @@ class PreferencesDialog(
 
     private fun startBinaryDownload() {
         val engine = orchestrator.speechEngine
-        val isSherpa = engine is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine
-        val targetName = if (isSherpa) "sherpa-onnx" else "whisper-cli"
+        val targetName =
+            when (engine) {
+                is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> "sherpa-onnx"
+                is su.kamil.dev.golos.voice.engine.VoskEngine -> "Vosk"
+                else -> "whisper-cli"
+            }
 
         downloadBinaryBtn.isEnabled = false
         downloadProgressBar.value = 0
@@ -2534,20 +2539,28 @@ class PreferencesDialog(
 
         coroutineScope.launch {
             val result =
-                if (isSherpa) {
-                    sherpaBinaryManager.downloadPrecompiledBinary { pct, status ->
-                        SwingUtilities.invokeLater {
-                            downloadProgressBar.value = (pct * 100).toInt()
-                            downloadProgressBar.string = status
+                when (engine) {
+                    is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine ->
+                        sherpaBinaryManager.downloadPrecompiledBinary { pct, status ->
+                            SwingUtilities.invokeLater {
+                                downloadProgressBar.value = (pct * 100).toInt()
+                                downloadProgressBar.string = status
+                            }
                         }
-                    }
-                } else {
-                    binaryManager.downloadPrecompiledBinary { pct, status ->
-                        SwingUtilities.invokeLater {
-                            downloadProgressBar.value = (pct * 100).toInt()
-                            downloadProgressBar.string = status
+                    is su.kamil.dev.golos.voice.engine.VoskEngine ->
+                        voskBinaryManager.downloadPrecompiledBinary { pct, status ->
+                            SwingUtilities.invokeLater {
+                                downloadProgressBar.value = (pct * 100).toInt()
+                                downloadProgressBar.string = status
+                            }
                         }
-                    }
+                    else ->
+                        binaryManager.downloadPrecompiledBinary { pct, status ->
+                            SwingUtilities.invokeLater {
+                                downloadProgressBar.value = (pct * 100).toInt()
+                                downloadProgressBar.string = status
+                            }
+                        }
                 }
 
             SwingUtilities.invokeLater {
@@ -2555,8 +2568,10 @@ class PreferencesDialog(
                 if (result.isSuccess) {
                     val file = result.getOrThrow()
                     binaryPathField.text = file.absolutePath
-                    if (isSherpa) {
+                    if (engine is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine) {
                         sherpaEngine?.binaryPath = file.absolutePath
+                    } else if (engine is su.kamil.dev.golos.voice.engine.VoskEngine) {
+                        voskEngine?.binaryPath = file.absolutePath
                     } else {
                         whisperEngine?.binaryPath = file.absolutePath
                     }

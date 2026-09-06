@@ -78,15 +78,17 @@ class VoskEngine(
     private suspend fun transcribeFileInternal(audioFile: File): TranscriptionResult =
         withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
-            val resolvedBin = VoskBinaryManager().findVoskBinary(binaryPath)
-            val isBinAvailable = VoskBinaryManager().isBinaryAvailable(resolvedBin)
+            val manager = VoskBinaryManager()
+            val resolvedBin = manager.findVoskBinary(binaryPath)
+            val isBinAvailable = manager.isBinaryAvailable(resolvedBin)
+            val jarFile = File(manager.binDir, "vosk.jar")
 
-            if (!isBinAvailable) {
+            if (!isBinAvailable && !jarFile.exists()) {
                 val duration = System.currentTimeMillis() - startTime
                 return@withContext TranscriptionResult(
                     text =
-                        "[Error: vosk-transcriber not found on system PATH. " +
-                            "Install Vosk via 'pip install vosk' or specify binary path in Settings.]",
+                        "[Error: Vosk engine not found. " +
+                            "Open Preferences -> 'Engine & Models' and click 'Download Vosk'.]",
                     durationMs = duration,
                     isFinal = true,
                     confidence = 0.0f,
@@ -97,13 +99,78 @@ class VoskEngine(
             if (!modelDir.exists()) {
                 val duration = System.currentTimeMillis() - startTime
                 return@withContext TranscriptionResult(
-                    text = "[Error: Vosk model not found at '$modelPath'. Please download a model in Settings.]",
+                    text = "[Error: Vosk model not found at '$modelPath'. Please download a model in Preferences.]",
                     durationMs = duration,
                     isFinal = true,
                     confidence = 0.0f,
                 )
             }
 
+            val rawText =
+                if (jarFile.exists()) {
+                    transcribeWithJar(jarFile, modelDir, audioFile)
+                } else {
+                    transcribeWithCli(resolvedBin, modelDir, audioFile)
+                }
+
+            val postProcessed =
+                postProcessor.postProcess(
+                    rawText,
+                    profile = activeProfile,
+                    settings = postProcessingSettings,
+                )
+            val duration = System.currentTimeMillis() - startTime
+
+            TranscriptionResult(
+                text = postProcessed,
+                durationMs = duration,
+                isFinal = true,
+                confidence = 0.95f,
+            )
+        }
+
+    private fun transcribeWithJar(
+        jarFile: File,
+        modelDir: File,
+        audioFile: File,
+    ): String =
+        try {
+            val cl =
+                java.net.URLClassLoader(
+                    arrayOf(jarFile.toURI().toURL()),
+                    Thread.currentThread().contextClassLoader,
+                )
+            val modelClass = cl.loadClass("org.vosk.Model")
+            val recClass = cl.loadClass("org.vosk.Recognizer")
+
+            val modelCtor = modelClass.getConstructor(String::class.java)
+            val model = modelCtor.newInstance(modelDir.absolutePath)
+
+            val recCtor = recClass.getConstructor(modelClass, Float::class.javaPrimitiveType)
+            val rec = recCtor.newInstance(model, 16000.0f)
+
+            val acceptWf = recClass.getMethod("acceptWaveForm", ByteArray::class.java, Int::class.javaPrimitiveType)
+            val getFinalResult = recClass.getMethod("getFinalResult")
+
+            val wavBytes = audioFile.readBytes()
+            val pcm = if (wavBytes.size > 44) wavBytes.copyOfRange(44, wavBytes.size) else wavBytes
+            acceptWf.invoke(rec, pcm, pcm.size)
+            val jsonResult = getFinalResult.invoke(rec) as String
+
+            val regex = """"text"\s*:\s*"([^"]*)"""".toRegex()
+            val match = regex.find(jsonResult)
+            match?.groups?.get(1)?.value ?: ""
+        } catch (e: Exception) {
+            logger.error("In-process Vosk transcription failed: {}", e.message)
+            ""
+        }
+
+    private suspend fun transcribeWithCli(
+        resolvedBin: String,
+        modelDir: File,
+        audioFile: File,
+    ): String =
+        withContext(Dispatchers.IO) {
             val tempOut = File.createTempFile("vosk_out_", ".txt")
             val cmd =
                 listOf(
@@ -132,21 +199,6 @@ class VoskEngine(
 
             val textFromFile = if (tempOut.exists()) tempOut.readText().trim() else ""
             tempOut.delete()
-
-            val rawText = textFromFile.ifEmpty { rawOutput.trim() }
-            val postProcessed =
-                postProcessor.postProcess(
-                    rawText,
-                    profile = activeProfile,
-                    settings = postProcessingSettings,
-                )
-            val duration = System.currentTimeMillis() - startTime
-
-            TranscriptionResult(
-                text = postProcessed,
-                durationMs = duration,
-                isFinal = true,
-                confidence = 0.95f,
-            )
+            textFromFile.ifEmpty { rawOutput.trim() }
         }
 }

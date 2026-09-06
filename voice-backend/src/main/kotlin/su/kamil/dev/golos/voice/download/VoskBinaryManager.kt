@@ -79,11 +79,18 @@ class VoskBinaryManager(
         } catch (_: Exception) {
         }
 
+        val localJar = File(binDir, "vosk.jar")
+        if (localJar.exists()) {
+            return localJar.absolutePath
+        }
+
         return "vosk-transcriber"
     }
 
     fun isBinaryAvailable(customPath: String? = null): Boolean {
+        if (File(binDir, "vosk.jar").exists()) return true
         val bin = findVoskBinary(customPath)
+        if (bin.endsWith("vosk.jar") && File(bin).exists()) return true
         val f = File(bin)
         if (f.isAbsolute && f.exists() && f.canExecute()) return true
 
@@ -95,4 +102,68 @@ class VoskBinaryManager(
             false
         }
     }
+
+    fun downloadPrecompiledBinary(onProgress: (Float, String) -> Unit = { _, _ -> }): Result<File> =
+        runCatching {
+            onProgress(0.1f, "Connecting to Maven repository...")
+            val downloadUrl = "https://repo1.maven.org/maven2/com/alphacephei/vosk/0.3.45/vosk-0.3.45.jar"
+            val client =
+                java.net.http.HttpClient.newBuilder()
+                    .followRedirects(java.net.http.HttpClient.Redirect.ALWAYS)
+                    .connectTimeout(java.time.Duration.ofSeconds(20))
+                    .build()
+            val request =
+                java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI(downloadUrl))
+                    .GET()
+                    .build()
+            val response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofInputStream())
+            if (response.statusCode() !in 200..299) {
+                throw java.io.IOException("HTTP error ${response.statusCode()} while downloading $downloadUrl")
+            }
+
+            binDir.mkdirs()
+            val targetJar = File(binDir, "vosk.jar")
+            val tempJar = File(binDir, "vosk.jar.tmp")
+            val totalBytes = response.headers().firstValueAsLong("Content-Length").orElse(-1L)
+
+            try {
+                response.body().use { input ->
+                    tempJar.outputStream().use { output ->
+                        val buffer = ByteArray(32768)
+                        var bytesRead: Int
+                        var totalRead = 0L
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            totalRead += bytesRead
+                            if (totalBytes > 0) {
+                                val pct = 0.1f + 0.85f * (totalRead.toFloat() / totalBytes)
+                                val mbRead = totalRead / (1024 * 1024)
+                                val mbTotal = totalBytes / (1024 * 1024)
+                                onProgress(pct, "Downloading Vosk: $mbRead MB / $mbTotal MB")
+                            }
+                        }
+                    }
+                }
+                if (targetJar.exists()) targetJar.delete()
+                tempJar.renameTo(targetJar)
+
+                val isWin = System.getProperty("os.name").lowercase().contains("win")
+                val launcherFile = File(binDir, if (isWin) "vosk.bat" else "vosk")
+                if (isWin) {
+                    launcherFile.writeText("@echo off\r\njava -cp \"%~dp0vosk.jar\" org.vosk.LibVosk %*\r\n")
+                } else {
+                    val script = "#!/bin/sh\nDIR=\"\$(cd \"\$(dirname \"\$0\")\" && pwd)\"\n" +
+                        "exec java -cp \"\$DIR/vosk.jar\" org.vosk.LibVosk \"\$@\"\n"
+                    launcherFile.writeText(script)
+                    launcherFile.setExecutable(true)
+                }
+
+                onProgress(1.0f, "Complete")
+                logger.info("Successfully installed Vosk library to: {}", targetJar.absolutePath)
+                targetJar
+            } finally {
+                if (tempJar.exists()) tempJar.delete()
+            }
+        }
 }

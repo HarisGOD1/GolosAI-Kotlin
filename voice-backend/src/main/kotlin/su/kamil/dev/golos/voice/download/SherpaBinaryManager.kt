@@ -123,19 +123,19 @@ class SherpaBinaryManager(
             val os = System.getProperty("os.name").lowercase()
             val arch = System.getProperty("os.arch").lowercase()
 
-            val baseUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.10.36"
+            val baseUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.7"
             val downloadUrl =
                 when {
                     os.contains("linux") && (arch.contains("aarch64") || arch.contains("arm64")) ->
-                        "$baseUrl/sherpa-onnx-v1.10.36-linux-aarch64.tar.bz2"
+                        "$baseUrl/sherpa-onnx-v1.13.7-linux-aarch64-static.tar.bz2"
                     os.contains("linux") ->
-                        "$baseUrl/sherpa-onnx-v1.10.36-linux-x64.tar.bz2"
+                        "$baseUrl/sherpa-onnx-v1.13.7-linux-x64-static.tar.bz2"
                     os.contains("win") ->
-                        "$baseUrl/sherpa-onnx-v1.10.36-win-x64.zip"
+                        "$baseUrl/sherpa-onnx-v1.13.7-win-x64-static-MD-Release.tar.bz2"
                     os.contains("mac") && (arch.contains("aarch64") || arch.contains("arm64")) ->
-                        "$baseUrl/sherpa-onnx-v1.10.36-osx-arm64.tar.bz2"
+                        "$baseUrl/sherpa-onnx-v1.13.7-osx-arm64-static.tar.bz2"
                     os.contains("mac") ->
-                        "$baseUrl/sherpa-onnx-v1.10.36-osx-x64.tar.bz2"
+                        "$baseUrl/sherpa-onnx-v1.13.7-osx-x64-static.tar.bz2"
                     else ->
                         throw UnsupportedOperationException("Automatic sherpa-onnx download not supported for OS: $os, arch: $arch")
                 }
