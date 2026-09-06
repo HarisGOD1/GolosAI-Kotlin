@@ -215,7 +215,7 @@ class SettingsManager(
             )
         val engine =
             EngineSettings(
-                selectedId = engMap["selectedId"]?.toString() ?: "mock",
+                selectedId = engMap["selectedId"]?.toString() ?: "whisper",
                 whisper = whisper,
             )
 

@@ -80,7 +80,7 @@ data class WhisperSettings(
 )
 
 data class EngineSettings(
-    val selectedId: String = "mock",
+    val selectedId: String = "whisper",
     val whisper: WhisperSettings = WhisperSettings(),
 )
 

@@ -2606,11 +2606,12 @@ class PreferencesDialog(
         autoStartManager.setAutoStart(c.autostart.enabled)
 
         // Engine
-        if (c.engine.selectedId == "whisper-cpp") {
+        if (c.engine.selectedId == "whisper-cpp" || c.engine.selectedId == "whisper") {
             val idx = availableEngines.indexOfFirst { it is WhisperCppEngine }
             if (idx != -1) engineCombo.selectedIndex = idx
         } else {
-            engineCombo.selectedIndex = 0
+            val idx = availableEngines.indexOfFirst { it.id == c.engine.selectedId }
+            engineCombo.selectedIndex = if (idx != -1) idx else 0
         }
 
         // Whisper details
@@ -2633,7 +2634,7 @@ class PreferencesDialog(
     private fun saveCurrentConfig() {
         val hk = orchestrator.currentHotkey
         val ins = orchestrator.injectionConfig
-        val selectedEngineId = if (orchestrator.speechEngine is WhisperCppEngine) "whisper-cpp" else "mock"
+        val selectedEngineId = orchestrator.speechEngine.id
         val isPortAudio = audioProviderCombo.selectedIndex == 1
         val selectedLang = AppLanguage.entries.getOrNull(uiLanguageCombo.selectedIndex) ?: AppLanguage.EN
         val currentProfileStr =

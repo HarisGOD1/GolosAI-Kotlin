@@ -116,7 +116,10 @@ fun main() {
             whisperEngine,
         )
 
-    val activeEngine = if (config.engine.selectedId == "whisper-cpp") whisperEngine else engines.first()
+    val activeEngine =
+        engines.firstOrNull { it.id == config.engine.selectedId }
+            ?: engines.firstOrNull { it.id == "whisper-cpp" && config.engine.selectedId == "whisper" }
+            ?: whisperEngine
 
     // 4. Application Orchestrator
     val orchestrator =
