@@ -134,6 +134,12 @@ class WhisperCppEngine(
             } else if (initialPrompt.isNotBlank()) {
                 cmd.add("--prompt")
                 cmd.add(initialPrompt)
+            } else {
+                val promptTerms = postProcessor.dictionaryManager.generatePromptTerms()
+                if (promptTerms.isNotBlank()) {
+                    cmd.add("--prompt")
+                    cmd.add(promptTerms)
+                }
             }
 
             logger.info(

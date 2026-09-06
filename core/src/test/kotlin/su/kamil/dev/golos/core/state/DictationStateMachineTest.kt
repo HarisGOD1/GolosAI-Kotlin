@@ -1,6 +1,8 @@
 package su.kamil.dev.golos.core.state
 
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import su.kamil.dev.golos.core.model.AudioChunk
 import su.kamil.dev.golos.core.model.DictationState

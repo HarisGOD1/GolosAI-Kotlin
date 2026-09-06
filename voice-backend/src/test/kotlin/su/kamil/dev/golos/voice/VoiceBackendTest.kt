@@ -1,7 +1,10 @@
 package su.kamil.dev.golos.voice
 
 import kotlinx.coroutines.runBlocking
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import su.kamil.dev.golos.core.model.AudioChunk
 import su.kamil.dev.golos.voice.audio.AudioPreprocessor
@@ -103,7 +106,10 @@ class VoiceBackendTest {
     @Test
     fun `test cleanWhisperOutput strips initialization logs and decodes cleanly`() {
         val engine = su.kamil.dev.golos.voice.engine.WhisperCppEngine(modelPath = "/fake/model.bin")
-        val rawInput = "loadload_backend: loaded CPU backend from /home/thegod/.cache/golos-ai/bin/libggml-cpu-icelake.so read_audio_data: reading audio data from '/tmp/golos_audio_10051352338310894459.wav' ... read_audio_data: trying to decode with miniaudio Hello Elias, this is my test of text speech."
+        val rawInput =
+            "loadload_backend: loaded CPU backend from /home/thegod/.cache/golos-ai/bin/libggml-cpu-icelake.so " +
+                "read_audio_data: reading audio data from '/tmp/golos_audio_10051352338310894459.wav' ... " +
+                "read_audio_data: trying to decode with miniaudio Hello Elias, this is my test of text speech."
 
         val cleaned = engine.cleanWhisperOutput(rawInput)
         assertEquals("Hello Elias, this is my test of text speech.", cleaned)
@@ -163,7 +169,7 @@ class VoiceBackendTest {
         val pp = su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor()
         val raw = "ну короче нужно нужно проверить этот блок"
         val res = pp.postProcess(raw)
-        assertEquals("Нужно проверить этот блок", res)
+        assertEquals("Нужно проверить этот блок.", res)
     }
 
     @Test
@@ -179,7 +185,7 @@ class VoiceBackendTest {
         val pp = su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor()
         val raw = "открой жуни тесты в селектил"
         val res = pp.postProcess(raw)
-        assertEquals("Открой JUnit тесты в Селектел", res)
+        assertEquals("Открой JUnit тесты в Селектел.", res)
     }
 
     @Test
@@ -195,7 +201,8 @@ class VoiceBackendTest {
                     )
                 val result = engine.transcribeFile(standFile)
                 assertTrue(result.text.isNotBlank())
-                assertTrue(result.text.lowercase().contains("обсудим") || result.text.lowercase().contains("архитектур"))
+                val text = result.text.lowercase()
+                assertTrue(text.contains("обсудим") || text.contains("архитектур"))
             }
         }
 

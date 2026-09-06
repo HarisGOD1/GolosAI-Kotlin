@@ -74,3 +74,10 @@ interface TextInjectorPort {
         config: InjectionConfig = InjectionConfig(),
     ): Result<Unit>
 }
+
+/**
+ * Port for detecting the active application window context (Criteria J-04, M-02).
+ */
+interface ActiveWindowDetectorPort {
+    fun detectActiveWindow(): su.kamil.dev.golos.core.model.ActiveWindowInfo
+}

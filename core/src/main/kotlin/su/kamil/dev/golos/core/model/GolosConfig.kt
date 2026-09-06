@@ -88,6 +88,17 @@ data class AutostartSettings(
     val enabled: Boolean = false,
 )
 
+data class PostProcessingSettings(
+    val enabled: Boolean = true,
+    val autoPunctuation: Boolean = true,
+    val numberFormatting: Boolean = true,
+    val fillerWordsRemoval: Boolean = true,
+    val selfCorrection: Boolean = true,
+    val dictionaryEnabled: Boolean = true,
+    val customDictionaryPath: String = "",
+    val activeAppProfile: String = "AUTO",
+)
+
 data class GolosConfig(
     val version: String = "1.0",
     val uiLanguage: String = "en",
@@ -96,4 +107,5 @@ data class GolosConfig(
     val audio: AudioSettings = AudioSettings(),
     val engine: EngineSettings = EngineSettings(),
     val autostart: AutostartSettings = AutostartSettings(),
+    val postProcessing: PostProcessingSettings = PostProcessingSettings(),
 )

@@ -12,4 +12,6 @@ data class HistoryEntry(
     val durationMs: Long = 0,
     val engine: String = "",
     val language: String = "",
+    val appName: String = "",
+    val profile: String = "",
 )

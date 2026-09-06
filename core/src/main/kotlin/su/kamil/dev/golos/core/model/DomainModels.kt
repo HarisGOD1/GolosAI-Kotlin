@@ -111,10 +111,31 @@ enum class AudioWarningType {
 /**
  * Signal statistics computed for audio level indicators and clipping detection (Criteria C-07, C-08, E-07).
  */
+@Suppress("MagicNumber")
 data class AudioSignalStats(
     val rms: Float = 0.0f,
     val rmsDb: Float = -96.0f,
     val peak: Float = 0.0f,
     val peakDb: Float = -96.0f,
     val isClipping: Boolean = false,
+    val isSilence: Boolean = false,
+)
+
+/**
+ * Application profile modes for tailored speech post-processing (Criteria J-01..J-05).
+ */
+enum class ApplicationProfile {
+    GENERAL,
+    MESSENGER,
+    MAIL,
+    CODE,
+}
+
+/**
+ * Information regarding the active foreground window context (Criteria J-04, M-02).
+ */
+data class ActiveWindowInfo(
+    val appName: String = "",
+    val windowTitle: String = "",
+    val profile: ApplicationProfile = ApplicationProfile.GENERAL,
 )

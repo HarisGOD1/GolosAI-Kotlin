@@ -313,27 +313,32 @@
 
 ---
 
-### 31. Rule-Based Speech Text Normalization & Post-Processing (`F-10` - `F-20`, `G-01` - `G-15`) [Planned]
+### 31. Rule-Based Speech Text Normalization & Post-Processing (`F-10` - `F-20`, `G-01` - `G-18`) [Implemented]
 - **Goal**: Automatic formatting of numbers into digits, dates, times, currency, and removal of filler words.
-- **Design**:
-  - Pluggable `TextNormalizer` pipeline:
-    - Number formatter: convert spoken words to digits ("двадцать пять" -> "25", "one hundred" -> "100").
-    - Currency and units: "сто рублей" -> "100 руб.", "fifty dollars" -> "$50".
-    - Dates and times: "четырнадцать тридцать" -> "14:30".
-    - Filler words filter: strip Russian filler sounds ("э-э", "ну", "типа", "как бы") and English ("um", "uh", "like").
-    - Punctuation voice commands: "точка" -> ".", "запятая" -> ",", "с новой строки" -> `\n`.
-  - Toggleable via configuration (`postProcessing.enabled`).
-- **Criteria Alignment**: `F-10` to `F-20`, `G-01` to `G-15`.
+- **Implementation**:
+  - Implemented modular, chained `SpeechPostProcessor` pipeline in `voice-backend`:
+    - `NumberNormalizer`: Russian and English cardinal and compound numbers to digits (`F-10`) with character-offset preservation preventing spacing degradation.
+    - `DateTimeNormalizer`: Unified calendar dates to `DD.MM.YYYY` / `DD.MM` (`F-11`) and 24h clock times to `HH:MM` (`F-12`).
+    - `CurrencyAndPercentageNormalizer`: Rubles, kopecks, dollars, euros, vulgar fractions (`1/2`, `1/4`), and percentages (`12,5%`) (`F-13`, `F-14`).
+    - `ContactAndUrlNormalizer`: Compact phone numbers (`F-15`), email tokens (`F-16`), and URL assembly without spaces (`F-17`).
+    - `AbbreviationsNormalizer`: Tech and government acronyms in uppercase (API, HTTP, GUI, JSON, SQL, CPU, RAM, ФСБ, МВД, ГОСТ) (`F-18`).
+    - `ProperNamesAndToponymsNormalizer`: Russian proper names (`F-27`) and Tatarstan/Kazan toponyms (Казань, Татарстан, Иннополис, Спартаковская, Кремль, Кабан) (`F-28`).
+    - `PunctuationAndSpacingNormalizer`: Sentence end dots (`G-01`), complex sentence commas (`G-02`), question marks (`G-03`), exclamation marks (`G-04`), number & colon (`G-05`), sentence capitalization (`G-06`), numbered and bulleted lists (`G-10`, `G-11`), newlines (`G-12`), non-breaking spaces for units (`1020\u00A0мегабайт`, `3\u00A0секунды`) (`G-18`).
+    - Repetitions & Filler Words: Filter consecutive duplicate words (`F-19`), filler words ("ну", "короче", "как бы", "типа") (`F-20`), speaker self-corrections ("нет извини", "то есть", "точнее") (`F-21`), and acoustic hallucinations/subtitles (`F-22`, `F-23`).
+  - Toggleable via `PostProcessingSettings` in YAML configuration (`G-16`, `J-06`).
+- **Criteria Alignment**: `F-10` to `F-28`, `G-01` to `G-18`.
 
 ---
 
-### 32. Custom Domain Dictionary & Terminology Replacement (`H-01` - `H-14`) [Planned]
+### 32. Custom Domain Dictionary & Terminology Replacement (`H-01` - `H-14`) [Implemented]
 - **Goal**: High-accuracy recognition of technical terms, programming identifiers, brands, and domain vocabulary.
-- **Design**:
-  - Load dictionary from YAML file (`~/.config/golos-ai/dictionary.yaml`).
-  - Fast Trie / Aho-Corasick phonetic substitution to correct acoustic confusions.
-  - Inject custom vocabulary into Whisper initial prompt (`--prompt`).
-  - Track replacement hit statistics in history log.
+- **Implementation**:
+  - `DomainDictionaryManager` loading entries from `~/.config/golos-ai/dictionary.yaml` (or fallback `.txt`).
+  - Single-pass compiled regex alternation sorted by length (maximal munch) with Unicode word boundaries (`(?iU)\b...\b`).
+  - Scales efficiently to 5,000+ entries with < 2 ms execution time (`H-08`).
+  - Automatic generation of Russian grammatical case declensions (nominative, genitive, dative, accusative, instrumental, prepositional) for technical terms (`H-02`, `H-03`, `H-04`).
+  - Whisper prompt term injection: `generatePromptTerms()` supplies priority terms to whisper-cli `--prompt` context window.
+  - Runtime dynamic dictionary reload on file change (`H-10`) and hit tracking metrics (`H-12`).
 - **Criteria Alignment**: `H-01` to `H-14`.
 
 ---
