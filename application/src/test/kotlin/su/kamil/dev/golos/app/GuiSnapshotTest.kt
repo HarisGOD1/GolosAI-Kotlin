@@ -6,6 +6,8 @@ import su.kamil.dev.golos.app.config.SettingsManager
 import su.kamil.dev.golos.app.history.HistoryManager
 import su.kamil.dev.golos.app.ui.AppLanguage
 import su.kamil.dev.golos.app.ui.AppLocalization
+import su.kamil.dev.golos.app.ui.BulbWidget
+import su.kamil.dev.golos.app.ui.FontManager
 import su.kamil.dev.golos.app.ui.PreferencesDialog
 import su.kamil.dev.golos.core.model.AudioChunk
 import su.kamil.dev.golos.core.model.AudioDevice
@@ -17,15 +19,24 @@ import su.kamil.dev.golos.core.state.DictationStateMachine
 import su.kamil.dev.golos.system.autostart.AutoStartManager
 import su.kamil.dev.golos.system.keyboard.SimulatedHotkeyHook
 import su.kamil.dev.golos.voice.engine.MockSpeechToTextEngine
+import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Component
 import java.awt.Container
+import java.awt.FlowLayout
+import java.awt.GridLayout
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import javax.swing.JButton
 import javax.swing.JCheckBox
+import javax.swing.JPanel
 import javax.swing.JTabbedPane
 import javax.swing.SwingUtilities
+import javax.swing.border.CompoundBorder
+import javax.swing.border.EmptyBorder
+import javax.swing.border.LineBorder
 
 class GuiSnapshotTest {
     private class DummyAudioCapture : AudioCapturePort {
@@ -94,6 +105,12 @@ class GuiSnapshotTest {
             dialog.toggleCollapse()
             dialog.renderStatus(DictationState.IDLE)
             renderContainer(dialog.collapsedBarPanel, 640, 68, File(outDir, "4_collapsed_bar_idle.png"))
+
+            // 4b. Floating Bar (Idle)
+            val testFloatingPanel = createFloatingBarSnapshotPanel()
+            val barW = 580.coerceAtLeast(testFloatingPanel.preferredSize.width)
+            val barH = 54.coerceAtLeast(testFloatingPanel.preferredSize.height)
+            renderContainer(testFloatingPanel, barW, barH, File(outDir, "4b_floating_bar_idle.png"))
 
             // 5. Collapsed Bar (Recording)
             dialog.renderStatus(DictationState.RECORDING)
@@ -253,5 +270,66 @@ class GuiSnapshotTest {
         g2.dispose()
         ImageIO.write(image, "PNG", outFile)
         println("Saved snapshot: ${outFile.name} (${width}x$height)")
+    }
+
+    private fun createFloatingBarSnapshotPanel(): JPanel {
+        val panel = JPanel()
+        panel.border =
+            CompoundBorder(
+                LineBorder(Color(195, 205, 220), 1, true),
+                EmptyBorder(5, 12, 5, 12),
+            )
+        panel.background = Color(245, 247, 250)
+        panel.layout = BorderLayout(12, 0)
+
+        val bulbsBox = JPanel(GridLayout(1, 3, 8, 0))
+        bulbsBox.isOpaque = false
+        bulbsBox.add(
+            BulbWidget(
+                bulbColor = Color(46, 204, 113),
+                glowColor = Color(46, 204, 113, 140),
+                title = "APP",
+                statusText = "ACTIVE",
+                compact = true,
+            ),
+        )
+        bulbsBox.add(
+            BulbWidget(
+                bulbColor = Color(46, 204, 113),
+                glowColor = Color(46, 204, 113, 140),
+                title = "VOICE",
+                statusText = "READY",
+                compact = true,
+            ),
+        )
+        bulbsBox.add(
+            BulbWidget(
+                bulbColor = Color(52, 152, 219),
+                glowColor = Color(52, 152, 219, 140),
+                title = "MODE",
+                statusText = "F8 • Direct",
+                compact = true,
+            ),
+        )
+
+        val actionsBox = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
+        actionsBox.isOpaque = false
+
+        val speakBtn = JButton("Speak")
+        speakBtn.font = FontManager.regular(12f)
+        actionsBox.add(speakBtn)
+
+        val expBtn = JButton("[+] " + AppLocalization.tr("btn.expand"))
+        expBtn.font = FontManager.regular(12f)
+        actionsBox.add(expBtn)
+
+        val clsBtn = JButton("X")
+        clsBtn.font = FontManager.regular(12f)
+        clsBtn.foreground = Color(180, 40, 40)
+        actionsBox.add(clsBtn)
+
+        panel.add(bulbsBox, BorderLayout.WEST)
+        panel.add(actionsBox, BorderLayout.EAST)
+        return panel
     }
 }

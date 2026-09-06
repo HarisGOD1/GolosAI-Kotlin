@@ -603,7 +603,7 @@ class PreferencesDialog(
     private fun setupCollapsedBar() {
         collapsedBarPanel.border = EmptyBorder(6, 12, 6, 12)
         collapsedBarPanel.background = Color(245, 247, 250)
-        collapsedBarPanel.layout = BoxLayout(collapsedBarPanel, BoxLayout.X_AXIS)
+        collapsedBarPanel.layout = BorderLayout(12, 0)
 
         val bulbsBox = JPanel(GridLayout(1, 3, 6, 0))
         bulbsBox.isOpaque = false
@@ -638,9 +638,8 @@ class PreferencesDialog(
         closeBtn.addActionListener { exitApplication() }
         actionsBox.add(closeBtn)
 
-        collapsedBarPanel.add(bulbsBox)
-        collapsedBarPanel.add(Box.createHorizontalGlue())
-        collapsedBarPanel.add(actionsBox)
+        collapsedBarPanel.add(bulbsBox, BorderLayout.WEST)
+        collapsedBarPanel.add(actionsBox, BorderLayout.EAST)
 
         // Allow window dragging anywhere on collapsed bar
         var mouseOffset: Point? = null
@@ -661,6 +660,14 @@ class PreferencesDialog(
             }
         collapsedBarPanel.addMouseListener(dragListener)
         collapsedBarPanel.addMouseMotionListener(dragListener)
+        bulbsBox.addMouseListener(dragListener)
+        bulbsBox.addMouseMotionListener(dragListener)
+    }
+
+    private fun getMiniModeDisplayText(): String {
+        val insertShort = if (insertionModeCombo.selectedIndex == 0) "Direct" else "Clip"
+        val hotkeyStr = orchestrator.currentHotkey.displayText
+        return "$hotkeyStr • $insertShort"
     }
 
     fun toggleCollapse() {
@@ -673,23 +680,20 @@ class PreferencesDialog(
                 if (floatingBarWindow == null) {
                     floatingBarWindow =
                         IndicatorFloatingBar(
-                            owner = f,
+                            owner = null,
                             orchestrator = orchestrator,
-                            miniAppBulb = miniAppBulb,
-                            miniVoiceBulb = miniVoiceBulb,
-                            miniModeBulb = miniModeBulb,
                             expandAction = { toggleCollapse() },
                             exitAction = { exitApplication() },
                         )
                 }
                 floatingBarWindow?.let { win ->
-                    val barWidth = 480
-                    val barHeight = 54
+                    win.updateStatus(orchestrator.state.value, getMiniModeDisplayText())
+                    val barWidth = win.width
                     val x = f.x + (f.width - barWidth) / 2
                     val y = f.y + 20
                     win.setLocation(x.coerceAtLeast(0), y.coerceAtLeast(0))
-                    win.updateStatus(orchestrator.state.value)
                     win.isVisible = true
+                    win.toFront()
                 }
                 f.isVisible = false
             }
@@ -703,6 +707,7 @@ class PreferencesDialog(
                 f.bounds = expandedBounds
                 f.isVisible = true
                 f.toFront()
+                f.requestFocus()
             }
         }
         revalidate()
@@ -995,6 +1000,7 @@ class PreferencesDialog(
             updateModelStatus()
 
             renderStatus(orchestrator.state.value)
+            floatingBarWindow?.updateLocalization(getMiniModeDisplayText(), orchestrator.state.value)
             dashboardAppBulb.repaint()
             dashboardVoiceBulb.repaint()
             dashboardModeBulb.repaint()
@@ -1158,6 +1164,7 @@ class PreferencesDialog(
             }
         } catch (_: Throwable) {
         }
+        floatingBarWindow?.dispose()
         orchestrator.stop()
         frame?.dispose()
         kotlin.system.exitProcess(0)
@@ -2748,7 +2755,7 @@ class PreferencesDialog(
         dashboardModeBulb.updateState(blueMode, blueGlow, AppLocalization.tr("bulb.mode.title"), modeDisplay)
         miniModeBulb.updateState(blueMode, blueGlow, AppLocalization.tr("bulb.mode.title"), miniModeDisplay)
 
-        floatingBarWindow?.updateStatus(state)
+        floatingBarWindow?.updateStatus(state, miniModeDisplay)
         updateTrayIcon(state)
     }
 
