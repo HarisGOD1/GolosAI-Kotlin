@@ -45,3 +45,9 @@ bin/
 .DS_Store
 criterias.txt
 models/*.bin
+
+### Media / Screencasts & Screenshots ###
+screenshots/
+screencast/
+screencasts/
+
