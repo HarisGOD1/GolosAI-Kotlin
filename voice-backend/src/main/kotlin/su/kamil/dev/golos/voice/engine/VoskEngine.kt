@@ -29,12 +29,25 @@ class VoskEngine(
     var activeProfile: ApplicationProfile = ApplicationProfile.GENERAL
     var postProcessingSettings: PostProcessingSettings = PostProcessingSettings()
 
+    private var cachedModelPath: String? = null
+    private var cachedModel: Any? = null
+    private var cachedClassLoader: java.net.URLClassLoader? = null
+    private val modelLock = Any()
+
     override suspend fun initialize(): Result<Unit> =
         withContext(Dispatchers.IO) {
             val modelDir = File(modelPath)
             if (!modelDir.exists() || !modelDir.isDirectory) {
                 logger.warn("Vosk model directory not found at: {}", modelPath)
                 return@withContext Result.failure(IllegalArgumentException("Vosk model directory not found: $modelPath"))
+            }
+            val jarFile = File(VoskBinaryManager().binDir, "vosk.jar")
+            if (jarFile.exists()) {
+                try {
+                    getModel(jarFile, modelDir)
+                } catch (e: Exception) {
+                    logger.warn("Eager Vosk model preloading skipped: {}", e.message)
+                }
             }
             Result.success(Unit)
         }
@@ -51,10 +64,31 @@ class VoskEngine(
                 )
             }
 
+            val startTime = System.currentTimeMillis()
             val standardChunk = AudioPreprocessor.toWhisperStandard(audio)
+            val manager = VoskBinaryManager()
+            val jarFile = File(manager.binDir, "vosk.jar")
+            val modelDir = File(modelPath)
+
+            // High-speed in-memory path for live on-the-fly streaming & recording
+            if (jarFile.exists() && modelDir.exists()) {
+                val rawText = transcribeWithJar(jarFile, modelDir, standardChunk.samples)
+                val postProcessed =
+                    postProcessor.postProcess(
+                        rawText,
+                        profile = activeProfile,
+                        settings = postProcessingSettings,
+                    )
+                return@withContext TranscriptionResult(
+                    text = postProcessed,
+                    durationMs = System.currentTimeMillis() - startTime,
+                    isFinal = true,
+                    confidence = 0.95f,
+                )
+            }
+
             val wavBytes = AudioPreprocessor.createWavBytes(standardChunk)
             val tempWav = File.createTempFile("golos_vosk_", ".wav")
-
             try {
                 tempWav.writeBytes(wavBytes)
                 transcribeFileInternal(tempWav)
@@ -108,7 +142,9 @@ class VoskEngine(
 
             val rawText =
                 if (jarFile.exists()) {
-                    transcribeWithJar(jarFile, modelDir, audioFile)
+                    val bytes = audioFile.readBytes()
+                    val pcm = if (bytes.size > 44) bytes.copyOfRange(44, bytes.size) else bytes
+                    transcribeWithJar(jarFile, modelDir, pcm)
                 } else {
                     transcribeWithCli(resolvedBin, modelDir, audioFile)
                 }
@@ -129,41 +165,113 @@ class VoskEngine(
             )
         }
 
+    private fun getModel(jarFile: File, modelDir: File): Pair<java.net.URLClassLoader, Any> =
+        synchronized(modelLock) {
+            val cl =
+                cachedClassLoader ?: java.net.URLClassLoader(
+                    arrayOf(jarFile.toURI().toURL()),
+                    Thread.currentThread().contextClassLoader,
+                ).also { cachedClassLoader = it }
+
+            if (cachedModel != null && cachedModelPath == modelDir.absolutePath) {
+                return Pair(cl, cachedModel!!)
+            }
+
+            closeModel()
+
+            val modelClass = cl.loadClass("org.vosk.Model")
+            val modelCtor = modelClass.getConstructor(String::class.java)
+            val model = modelCtor.newInstance(modelDir.absolutePath)
+            cachedModel = model
+            cachedModelPath = modelDir.absolutePath
+            Pair(cl, model)
+        }
+
+    fun closeModel() {
+        synchronized(modelLock) {
+            try {
+                if (cachedModel != null) {
+                    val closeMethod = cachedModel!!.javaClass.getMethod("close")
+                    closeMethod.invoke(cachedModel)
+                }
+            } catch (_: Exception) {}
+            cachedModel = null
+            cachedModelPath = null
+        }
+    }
+
     private fun transcribeWithJar(
         jarFile: File,
         modelDir: File,
-        audioFile: File,
+        pcm: ByteArray,
     ): String =
         try {
-            val cl =
-                java.net.URLClassLoader(
-                    arrayOf(jarFile.toURI().toURL()),
-                    Thread.currentThread().contextClassLoader,
-                )
+            val (cl, model) = getModel(jarFile, modelDir)
             val modelClass = cl.loadClass("org.vosk.Model")
             val recClass = cl.loadClass("org.vosk.Recognizer")
-
-            val modelCtor = modelClass.getConstructor(String::class.java)
-            val model = modelCtor.newInstance(modelDir.absolutePath)
 
             val recCtor = recClass.getConstructor(modelClass, Float::class.javaPrimitiveType)
             val rec = recCtor.newInstance(model, 16000.0f)
 
             val acceptWf = recClass.getMethod("acceptWaveForm", ByteArray::class.java, Int::class.javaPrimitiveType)
+            val getResult = recClass.getMethod("getResult")
             val getFinalResult = recClass.getMethod("getFinalResult")
+            val getPartialResult = recClass.getMethod("getPartialResult")
+            val closeRec = recClass.getMethod("close")
 
-            val wavBytes = audioFile.readBytes()
-            val pcm = if (wavBytes.size > 44) wavBytes.copyOfRange(44, wavBytes.size) else wavBytes
-            acceptWf.invoke(rec, pcm, pcm.size)
-            val jsonResult = getFinalResult.invoke(rec) as String
+            try {
+                val fullText = StringBuilder()
+                var lastPartial = ""
+                val chunkSize = 4096
+                var offset = 0
+                while (offset < pcm.size) {
+                    val len = minOf(chunkSize, pcm.size - offset)
+                    val chunk = pcm.copyOfRange(offset, offset + len)
+                    val accepted = acceptWf.invoke(rec, chunk, len) as Boolean
+                    if (accepted) {
+                        val resJson = getResult.invoke(rec) as String
+                        val text = extractJsonField(resJson, "text")
+                        if (text.isNotBlank()) {
+                            if (fullText.isNotEmpty()) fullText.append(" ")
+                            fullText.append(text)
+                        }
+                    } else {
+                        val partJson = getPartialResult.invoke(rec) as String
+                        val partial = extractJsonField(partJson, "partial")
+                        if (partial.isNotBlank()) {
+                            lastPartial = partial
+                        }
+                    }
+                    offset += len
+                }
 
-            val regex = """"text"\s*:\s*"([^"]*)"""".toRegex()
-            val match = regex.find(jsonResult)
-            match?.groups?.get(1)?.value ?: ""
+                val finalJson = getFinalResult.invoke(rec) as String
+                val finalText = extractJsonField(finalJson, "text")
+                if (finalText.isNotBlank()) {
+                    if (fullText.isNotEmpty()) fullText.append(" ")
+                    fullText.append(finalText)
+                } else if (lastPartial.isNotBlank()) {
+                    if (fullText.isNotEmpty()) fullText.append(" ")
+                    fullText.append(lastPartial)
+                }
+
+                val resultText = fullText.toString().trim()
+                resultText
+            } finally {
+                try {
+                    closeRec.invoke(rec)
+                } catch (_: Exception) {}
+            }
         } catch (e: Exception) {
             logger.error("In-process Vosk transcription failed: {}", e.message)
             ""
         }
+
+    private fun extractJsonField(json: String, fieldName: String): String {
+        val regex = """"$fieldName"\s*:\s*"([^"]*)"""".toRegex()
+        val match = regex.find(json)
+        return match?.groups?.get(1)?.value ?: ""
+    }
 
     private suspend fun transcribeWithCli(
         resolvedBin: String,
@@ -202,3 +310,4 @@ class VoskEngine(
             textFromFile.ifEmpty { rawOutput.trim() }
         }
 }
+

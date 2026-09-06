@@ -54,6 +54,22 @@ class SherpaBinaryManager(
             }
         }
 
+        try {
+            val subBin =
+                binDir.walkTopDown()
+                    .filter { file ->
+                        file.isFile && candidateNames.any { it.equals(file.name, ignoreCase = true) }
+                    }
+                    .firstOrNull()
+            if (subBin != null) {
+                subBin.setExecutable(true)
+                if (subBin.canExecute()) {
+                    logger.info("Found sherpa-onnx binary in binDir subdirectory: {}", subBin.absolutePath)
+                    return subBin.absolutePath
+                }
+            }
+        } catch (_: Exception) {}
+
         val systemPaths =
             listOf(
                 "/usr/bin/sherpa-onnx",
@@ -80,17 +96,27 @@ class SherpaBinaryManager(
         } catch (_: Exception) {
         }
 
-        return "sherpa-onnx"
+        val defaultLocal = File(binDir, if (isWin) "sherpa-onnx.exe" else "sherpa-onnx")
+        if (defaultLocal.exists()) {
+            defaultLocal.setExecutable(true)
+            return defaultLocal.absolutePath
+        }
+
+        return defaultLocal.absolutePath
     }
 
     fun isBinaryAvailable(customPath: String? = null): Boolean {
+        if (!customPath.isNullOrBlank()) {
+            val f = File(customPath)
+            if (f.exists() && f.canExecute()) return true
+        }
         val bin = findSherpaBinary(customPath)
         val f = File(bin)
-        if (f.isAbsolute && f.exists() && f.canExecute()) return true
+        if (f.exists() && f.canExecute()) return true
 
         return try {
             val isWin = System.getProperty("os.name").lowercase().contains("win")
-            val p = ProcessBuilder(if (isWin) "where" else "which", bin).start()
+            val p = ProcessBuilder(if (isWin) "where" else "which", "sherpa-onnx").start()
             p.waitFor() == 0
         } catch (_: Exception) {
             false

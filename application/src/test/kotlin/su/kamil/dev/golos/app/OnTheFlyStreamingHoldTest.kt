@@ -110,6 +110,9 @@ class OnTheFlyStreamingHoldTest {
                     timing = InjectionTiming.ON_THE_FLY,
                 )
 
+            val partials = mutableListOf<String>()
+            orchestrator.onPartialTranscription = { text, _ -> partials.add(text) }
+
             orchestrator.start()
 
             // 1. User presses and holds PTT button
@@ -133,6 +136,7 @@ class OnTheFlyStreamingHoldTest {
             // Verify delta words were injected while holding
             assertTrue(textInjector.injectedDeltas.isNotEmpty())
             assertEquals("Hello", textInjector.injectedDeltas[0])
+            assertTrue(partials.isNotEmpty())
 
             // 2. User physically releases key after talking
             hotkeyHook.triggerKeyUp()

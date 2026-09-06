@@ -218,3 +218,28 @@ data class BatchSummary(
     val overallRtf: Float,
     val items: List<BatchItemStatus>,
 )
+
+/**
+ * Classification of GPU architecture for inference acceleration.
+ */
+enum class GpuType {
+    INTEGRATED,
+    DEDICATED,
+    UNKNOWN,
+}
+
+/**
+ * Metadata representing a detected physical or logical GPU device on the host system.
+ */
+data class GpuDeviceInfo(
+    val index: Int,
+    val name: String,
+    val type: GpuType,
+    val vendor: String = "",
+    val memoryMb: Long = 0L,
+    val isDefault: Boolean = false,
+) {
+    val displayLabel: String
+        get() = "GPU $index: $name (${type.name.lowercase().replaceFirstChar { it.uppercase() }})"
+}
+

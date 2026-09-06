@@ -155,6 +155,7 @@ class SettingsManager(
                             "device" to c.engine.whisper.device,
                             "threads" to c.engine.whisper.threads,
                             "bilingualMode" to c.engine.whisper.bilingualMode,
+                            "selectedGpuId" to c.engine.whisper.selectedGpuId,
                         ),
                     "vosk" to
                         linkedMapOf(
@@ -168,7 +169,14 @@ class SettingsManager(
                             "modelPath" to c.engine.sherpa.modelPath,
                             "modelName" to c.engine.sherpa.modelName,
                             "threads" to c.engine.sherpa.threads,
+                            "device" to c.engine.sherpa.device,
+                            "selectedGpuId" to c.engine.sherpa.selectedGpuId,
                         ),
+                ),
+            "hardware" to
+                linkedMapOf(
+                    "selectedGpuIndex" to c.hardware.selectedGpuIndex,
+                    "preferredGpuName" to c.hardware.preferredGpuName,
                 ),
             "autostart" to
                 linkedMapOf(
@@ -231,6 +239,7 @@ class SettingsManager(
                 device = whsMap["device"]?.toString() ?: "CPU",
                 threads = (whsMap["threads"] as? Number)?.toInt() ?: 4,
                 bilingualMode = whsMap["bilingualMode"] as? Boolean ?: false,
+                selectedGpuId = (whsMap["selectedGpuId"] as? Number)?.toInt() ?: -1,
             )
         val voskMap = engMap["vosk"] as? Map<String, Any> ?: emptyMap()
         val vosk =
@@ -246,6 +255,8 @@ class SettingsManager(
                 modelPath = sherpaMap["modelPath"]?.toString() ?: "",
                 modelName = sherpaMap["modelName"]?.toString() ?: "PengChengStarling",
                 threads = (sherpaMap["threads"] as? Number)?.toInt() ?: 4,
+                device = sherpaMap["device"]?.toString() ?: "CPU",
+                selectedGpuId = (sherpaMap["selectedGpuId"] as? Number)?.toInt() ?: -1,
             )
         val engine =
             EngineSettings(
@@ -253,6 +264,13 @@ class SettingsManager(
                 whisper = whisper,
                 vosk = vosk,
                 sherpa = sherpa,
+            )
+
+        val hwMap = map["hardware"] as? Map<String, Any> ?: emptyMap()
+        val hardware =
+            su.kamil.dev.golos.core.model.HardwareSettings(
+                selectedGpuIndex = (hwMap["selectedGpuIndex"] as? Number)?.toInt() ?: -1,
+                preferredGpuName = hwMap["preferredGpuName"]?.toString() ?: "Auto",
             )
 
         val autoMap = map["autostart"] as? Map<String, Any> ?: emptyMap()
@@ -283,8 +301,10 @@ class SettingsManager(
             insertion = insertion,
             audio = audio,
             engine = engine,
+            hardware = hardware,
             autostart = autostart,
             postProcessing = postProcessing,
         )
     }
 }
+

@@ -22,6 +22,8 @@ class SherpaOnnxEngine(
     var modelPath: String = "",
     var binaryPath: String = "sherpa-onnx",
     var threads: Int = Runtime.getRuntime().availableProcessors().coerceAtMost(4),
+    var device: String = "CPU",
+    var selectedGpuId: Int = -1,
     override val id: String = "sherpa-onnx",
     override val displayName: String = "Sherpa-ONNX (Next-Gen Kaldi)",
 ) : SpeechToTextEngine {
@@ -84,15 +86,15 @@ class SherpaOnnxEngine(
                 if (File(binaryPath).canExecute()) {
                     binaryPath
                 } else {
-                    val bin = binaryManager.findSherpaBinary(binaryPath)
-                    if (binaryManager.isBinaryAvailable(bin)) {
+                    val bin = binaryManager.findSherpaBinary(binaryPath.ifBlank { null })
+                    if (File(bin).canExecute() || binaryManager.isBinaryAvailable(bin)) {
                         bin
                     } else {
-                        binaryManager.ensureBinaryPresent(binaryPath)
+                        binaryManager.ensureBinaryPresent(binaryPath.ifBlank { null })
                     }
                 }
 
-            if (!binaryManager.isBinaryAvailable(resolvedBin)) {
+            if (!File(resolvedBin).canExecute() && !binaryManager.isBinaryAvailable(resolvedBin)) {
                 val duration = System.currentTimeMillis() - startTime
                 return@withContext TranscriptionResult(
                     text =
@@ -142,15 +144,32 @@ class SherpaOnnxEngine(
                     "--num-threads=$threads",
                 )
 
+            if (device.equals("GPU", ignoreCase = true)) {
+                val isMac = System.getProperty("os.name").lowercase().contains("mac")
+                if (isMac) {
+                    cmd.add("--provider=coreml")
+                } else {
+                    cmd.add("--provider=cuda")
+                    val devIdx = if (selectedGpuId >= 0) selectedGpuId else 0
+                    cmd.add("--device=$devIdx")
+                }
+            } else {
+                cmd.add("--provider=cpu")
+            }
+
             if (decoderFile != null) cmd.add("--decoder=${decoderFile.absolutePath}")
             if (joinerFile != null) cmd.add("--joiner=${joinerFile.absolutePath}")
             cmd.add(audioFile.absolutePath)
 
-            logger.info("Executing sherpa-onnx: {}", cmd.joinToString(" "))
+            logger.info("Executing sherpa-onnx (device: {}, selectedGpuId: {}): {}", device, selectedGpuId, cmd.joinToString(" "))
 
             val rawOutput =
                 try {
-                    val process = ProcessBuilder(cmd).redirectErrorStream(true).start()
+                    val pb = ProcessBuilder(cmd).redirectErrorStream(true)
+                    if (device.equals("GPU", ignoreCase = true) && selectedGpuId >= 0) {
+                        pb.environment()["CUDA_VISIBLE_DEVICES"] = selectedGpuId.toString()
+                    }
+                    val process = pb.start()
                     val stdoutDeferred = async(Dispatchers.IO) { process.inputStream.bufferedReader().readText() }
                     val finished = process.waitFor(120, TimeUnit.SECONDS)
                     if (!finished) {

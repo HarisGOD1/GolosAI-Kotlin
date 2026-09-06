@@ -77,6 +77,7 @@ data class WhisperSettings(
     val device: String = "CPU",
     val threads: Int = 4,
     val bilingualMode: Boolean = false,
+    val selectedGpuId: Int = -1,
 )
 
 data class VoskSettings(
@@ -90,6 +91,8 @@ data class SherpaSettings(
     val modelPath: String = "",
     val modelName: String = "PengChengStarling",
     val threads: Int = 4,
+    val device: String = "CPU",
+    val selectedGpuId: Int = -1,
 )
 
 data class EngineSettings(
@@ -97,6 +100,11 @@ data class EngineSettings(
     val whisper: WhisperSettings = WhisperSettings(),
     val vosk: VoskSettings = VoskSettings(),
     val sherpa: SherpaSettings = SherpaSettings(),
+)
+
+data class HardwareSettings(
+    val selectedGpuIndex: Int = -1,
+    val preferredGpuName: String = "Auto",
 )
 
 data class AutostartSettings(
@@ -121,6 +129,8 @@ data class GolosConfig(
     val insertion: InsertionSettings = InsertionSettings(),
     val audio: AudioSettings = AudioSettings(),
     val engine: EngineSettings = EngineSettings(),
+    val hardware: HardwareSettings = HardwareSettings(),
     val autostart: AutostartSettings = AutostartSettings(),
     val postProcessing: PostProcessingSettings = PostProcessingSettings(),
 )
+

@@ -335,4 +335,47 @@ class VoiceBackendTest {
             tempDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun `test SherpaOnnxEngine device and selectedGpuId properties`() {
+        val engine = su.kamil.dev.golos.voice.engine.SherpaOnnxEngine(modelPath = "/fake/model")
+        assertEquals("CPU", engine.device)
+        assertEquals(-1, engine.selectedGpuId)
+
+        engine.device = "GPU"
+        engine.selectedGpuId = 1
+        assertEquals("GPU", engine.device)
+        assertEquals(1, engine.selectedGpuId)
+    }
+
+    @Test
+    fun `test WhisperCppEngine selectedGpuId property`() {
+        val engine = su.kamil.dev.golos.voice.engine.WhisperCppEngine(modelPath = "/fake/model.bin")
+        assertEquals(-1, engine.selectedGpuId)
+
+        engine.selectedGpuId = 0
+        assertEquals(0, engine.selectedGpuId)
+    }
+
+    @Test
+    fun `test SherpaBinaryManager discovers binary in nested subdirectories`() {
+        val tempBinDir = java.io.File.createTempFile("sherpa_test_bin_", "").apply {
+            delete()
+            mkdirs()
+        }
+        try {
+            val nestedSubdir = java.io.File(tempBinDir, "sherpa-onnx-v1.13.7-linux-x64-static/bin")
+            nestedSubdir.mkdirs()
+            val fakeBin = java.io.File(nestedSubdir, "sherpa-onnx")
+            fakeBin.writeText("#!/bin/sh\nexit 0\n")
+            fakeBin.setExecutable(true)
+
+            val manager = su.kamil.dev.golos.voice.download.SherpaBinaryManager(binDir = tempBinDir)
+            val resolved = manager.findSherpaBinary()
+            assertEquals(fakeBin.absolutePath, resolved)
+            assertTrue(manager.isBinaryAvailable())
+        } finally {
+            tempBinDir.deleteRecursively()
+        }
+    }
 }

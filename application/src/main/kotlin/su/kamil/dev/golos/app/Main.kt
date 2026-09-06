@@ -89,6 +89,7 @@ fun main() {
             binaryPath = configuredBinary,
             language = config.engine.whisper.language,
             device = configuredDevice,
+            selectedGpuId = config.engine.whisper.selectedGpuId,
             displayName = "Whisper.cpp (${File(configuredBinary).name})",
         )
 
@@ -131,6 +132,8 @@ fun main() {
             modelPath = configuredSherpaModel,
             binaryPath = config.engine.sherpa.binaryPath.ifEmpty { "sherpa-onnx" },
             threads = config.engine.sherpa.threads,
+            device = config.engine.sherpa.device,
+            selectedGpuId = config.engine.sherpa.selectedGpuId,
         )
 
     val engines =

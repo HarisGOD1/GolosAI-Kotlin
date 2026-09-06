@@ -24,6 +24,7 @@ class WhisperCppEngine(
     var binaryPath: String = "whisper-cli",
     var language: String = "auto",
     var device: InferenceDevice = InferenceDevice.CPU,
+    var selectedGpuId: Int = -1,
     var threads: Int = Runtime.getRuntime().availableProcessors().coerceAtMost(4),
     var bilingualMode: Boolean = false,
     var initialPrompt: String = "",
@@ -118,6 +119,9 @@ class WhisperCppEngine(
 
             if (device == InferenceDevice.CPU) {
                 cmd.add("--no-gpu")
+            } else if (selectedGpuId >= 0) {
+                cmd.add("--device")
+                cmd.add(selectedGpuId.toString())
             }
 
             if (bilingualMode && language != "auto" && language != "en") {
@@ -153,18 +157,22 @@ class WhisperCppEngine(
             }
 
             logger.info(
-                "Executing whisper-cli (device: {}, lang: {}, model: {}): {}",
+                "Executing whisper-cli (device: {}, selectedGpuId: {}, lang: {}, model: {}): {}",
                 device,
+                selectedGpuId,
                 language,
                 File(modelPath).name,
                 cmd.joinToString(" "),
             )
 
+            val pb = ProcessBuilder(cmd).redirectErrorStream(false)
+            if (device == InferenceDevice.GPU && selectedGpuId >= 0) {
+                pb.environment()["CUDA_VISIBLE_DEVICES"] = selectedGpuId.toString()
+            }
+
             val process =
                 try {
-                    ProcessBuilder(cmd)
-                        .redirectErrorStream(false)
-                        .start()
+                    pb.start()
                 } catch (e: Exception) {
                     logger.error("Failed to start whisper-cli process at path '{}'", resolvedBin, e)
                     return@withContext TranscriptionResult(

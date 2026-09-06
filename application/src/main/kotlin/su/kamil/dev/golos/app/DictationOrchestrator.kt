@@ -57,6 +57,7 @@ class DictationOrchestrator(
             profile: su.kamil.dev.golos.core.model.ApplicationProfile,
         ) -> Unit
     )? = null
+    var onPartialTranscription: ((String, SpeechToTextEngine) -> Unit)? = null
     var onAudioLevel: ((rmsDb: Float, peakDb: Float, isClipping: Boolean) -> Unit)? = null
     var onAudioWarning: ((su.kamil.dev.golos.core.model.AudioWarningType) -> Unit)? = null
 
@@ -201,6 +202,22 @@ class DictationOrchestrator(
                 committedWords.clear()
             }
 
+            val effectiveProfile = getEffectiveProfile()
+            when (val eng = speechEngine) {
+                is su.kamil.dev.golos.voice.engine.WhisperCppEngine -> {
+                    eng.activeProfile = effectiveProfile
+                    eng.postProcessingSettings = postProcessingSettings
+                }
+                is su.kamil.dev.golos.voice.engine.VoskEngine -> {
+                    eng.activeProfile = effectiveProfile
+                    eng.postProcessingSettings = postProcessingSettings
+                }
+                is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> {
+                    eng.activeProfile = effectiveProfile
+                    eng.postProcessingSettings = postProcessingSettings
+                }
+            }
+
             try {
                 audioCapture.onAudioLevel = { rmsDb, peakDb, isClipping ->
                     handleAudioLevel(rmsDb, peakDb, isClipping)
@@ -248,6 +265,9 @@ class DictationOrchestrator(
                         bitsPerSample = 16,
                     )
                 val partial = speechEngine.transcribe(partialChunk)
+                if (partial.text.isNotBlank()) {
+                    onPartialTranscription?.invoke(partial.text, speechEngine)
+                }
                 val newWords = partial.text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
 
                 synchronized(committedWords) {
@@ -305,11 +325,19 @@ class DictationOrchestrator(
                         )
 
                         val effectiveProfile = getEffectiveProfile()
-                        if (speechEngine is su.kamil.dev.golos.voice.engine.WhisperCppEngine) {
-                            (speechEngine as su.kamil.dev.golos.voice.engine.WhisperCppEngine).activeProfile =
-                                effectiveProfile
-                            (speechEngine as su.kamil.dev.golos.voice.engine.WhisperCppEngine).postProcessingSettings =
-                                postProcessingSettings
+                        when (val eng = speechEngine) {
+                            is su.kamil.dev.golos.voice.engine.WhisperCppEngine -> {
+                                eng.activeProfile = effectiveProfile
+                                eng.postProcessingSettings = postProcessingSettings
+                            }
+                            is su.kamil.dev.golos.voice.engine.VoskEngine -> {
+                                eng.activeProfile = effectiveProfile
+                                eng.postProcessingSettings = postProcessingSettings
+                            }
+                            is su.kamil.dev.golos.voice.engine.SherpaOnnxEngine -> {
+                                eng.activeProfile = effectiveProfile
+                                eng.postProcessingSettings = postProcessingSettings
+                            }
                         }
 
                         val inferenceStart = System.currentTimeMillis()
