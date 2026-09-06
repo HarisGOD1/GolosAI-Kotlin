@@ -60,6 +60,9 @@ class DictationOrchestrator(
     var onAudioLevel: ((rmsDb: Float, peakDb: Float, isClipping: Boolean) -> Unit)? = null
     var onAudioWarning: ((su.kamil.dev.golos.core.model.AudioWarningType) -> Unit)? = null
 
+    val batchTranscriber: su.kamil.dev.golos.voice.batch.BatchAudioTranscriber
+        get() = su.kamil.dev.golos.voice.batch.BatchAudioTranscriber(speechEngine)
+
     fun getEffectiveProfile(): su.kamil.dev.golos.core.model.ApplicationProfile = manualProfile ?: currentActiveWindow.profile
 
     fun cycleManualProfile(): su.kamil.dev.golos.core.model.ApplicationProfile? {

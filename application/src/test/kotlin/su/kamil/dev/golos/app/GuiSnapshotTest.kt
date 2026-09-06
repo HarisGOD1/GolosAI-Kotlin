@@ -114,6 +114,10 @@ class GuiSnapshotTest {
             dialog.selectTab(3)
             renderContainer(dialog, width, height, File(outDir, "8_history_tab.png"))
 
+            // 8b. Batch Audio Tab (Criteria N-09..N-18)
+            dialog.selectTab(4)
+            renderContainer(dialog, width, height, File(outDir, "8b_batch_tab.png"))
+
             // 9. Multilingual: Russian UI
             AppLocalization.setLanguage(AppLanguage.RU)
             dialog.selectTab(0)

@@ -183,4 +183,70 @@ object AudioPreprocessor {
             (v.toInt() and 0xFF).toByte(),
             ((v.toInt() ushr 8) and 0xFF).toByte(),
         )
+
+    /**
+     * Reads a WAV file and returns its PCM data as an AudioChunk (Criteria N-06, N-07).
+     */
+    fun readWavFile(file: java.io.File): AudioChunk {
+        val bytes = file.readBytes()
+        require(bytes.size >= 44) { "WAV file '${file.name}' is too short (${bytes.size} bytes)" }
+        val riff = String(bytes, 0, 4, Charsets.US_ASCII)
+        val wave = String(bytes, 8, 4, Charsets.US_ASCII)
+        require(riff == "RIFF" && wave == "WAVE") { "File '${file.name}' lacks valid RIFF/WAVE header" }
+
+        var offset = 12
+        var channels = 1
+        var sampleRate = TARGET_SAMPLE_RATE
+        var bitsPerSample = TARGET_BITS_PER_SAMPLE
+        var pcmData: ByteArray? = null
+
+        while (offset + 8 <= bytes.size) {
+            val chunkId = String(bytes, offset, 4, Charsets.US_ASCII)
+            val chunkSize =
+                (bytes[offset + 4].toInt() and 0xFF) or
+                    ((bytes[offset + 5].toInt() and 0xFF) shl 8) or
+                    ((bytes[offset + 6].toInt() and 0xFF) shl 16) or
+                    ((bytes[offset + 7].toInt() and 0xFF) shl 24)
+            offset += 8
+
+            if (chunkId == "fmt " && chunkSize >= 16 && offset + 16 <= bytes.size) {
+                channels = (bytes[offset + 2].toInt() and 0xFF) or ((bytes[offset + 3].toInt() and 0xFF) shl 8)
+                sampleRate = (bytes[offset + 4].toInt() and 0xFF) or
+                    ((bytes[offset + 5].toInt() and 0xFF) shl 8) or
+                    ((bytes[offset + 6].toInt() and 0xFF) shl 16) or
+                    ((bytes[offset + 7].toInt() and 0xFF) shl 24)
+                bitsPerSample = (bytes[offset + 14].toInt() and 0xFF) or ((bytes[offset + 15].toInt() and 0xFF) shl 8)
+                offset += chunkSize
+            } else if (chunkId == "data") {
+                val dataLen = minOf(chunkSize, bytes.size - offset)
+                pcmData = bytes.copyOfRange(offset, offset + dataLen)
+                break
+            } else {
+                offset += chunkSize
+            }
+        }
+
+        requireNotNull(pcmData) { "No 'data' chunk found in WAV file '${file.name}'" }
+        return AudioChunk(
+            samples = pcmData,
+            sampleRate = sampleRate,
+            channels = channels,
+            bitsPerSample = bitsPerSample,
+        )
+    }
+
+    /**
+     * Resamples and downmixes any WAV file to 16kHz mono 16-bit PCM WAV (Criteria N-06, N-07).
+     */
+    fun convertWavToStandard(
+        inputFile: java.io.File,
+        outputFile: java.io.File,
+    ): java.io.File {
+        val chunk = readWavFile(inputFile)
+        val standardChunk = toWhisperStandard(chunk)
+        val wavBytes = createWavBytes(standardChunk)
+        outputFile.parentFile?.mkdirs()
+        outputFile.writeBytes(wavBytes)
+        return outputFile
+    }
 }

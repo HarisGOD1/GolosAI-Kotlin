@@ -67,7 +67,7 @@ class WhisperCppEngine(
             val tempWav = File.createTempFile("golos_audio_", ".wav")
             try {
                 tempWav.writeBytes(wavBytes)
-                transcribeAudioFileInternal(tempWav)
+                transcribeAudioFileInternal(tempWav, includeTimestamps = false)
             } finally {
                 tempWav.delete()
             }
@@ -82,10 +82,13 @@ class WhisperCppEngine(
                     confidence = 0.0f,
                 )
             }
-            transcribeAudioFileInternal(file)
+            transcribeAudioFileInternal(file, includeTimestamps = true)
         }
 
-    private suspend fun transcribeAudioFileInternal(audioFile: File): TranscriptionResult =
+    private suspend fun transcribeAudioFileInternal(
+        audioFile: File,
+        includeTimestamps: Boolean = true,
+    ): TranscriptionResult =
         withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
             val resolvedBin =
@@ -106,9 +109,12 @@ class WhisperCppEngine(
                     "-l", language,
                     "-bo", "1",
                     "-bs", "1",
-                    "--no-timestamps",
                     "--no-prints",
                 )
+
+            if (!includeTimestamps) {
+                cmd.add("--no-timestamps")
+            }
 
             if (device == InferenceDevice.CPU) {
                 cmd.add("--no-gpu")
@@ -193,6 +199,7 @@ class WhisperCppEngine(
                 logger.debug("whisper-cli stderr: {}", rawStderr)
             }
 
+            val segments = if (includeTimestamps) parseSegments(rawOutput) else emptyList()
             val cleanedText = cleanWhisperOutput(rawOutput)
             val postProcessed =
                 postProcessor.postProcess(
@@ -207,8 +214,36 @@ class WhisperCppEngine(
                 durationMs = duration,
                 isFinal = true,
                 confidence = 0.95f,
+                segments = segments,
             )
         }
+
+    internal fun parseSegments(raw: String): List<su.kamil.dev.golos.core.model.TimecodedSegment> {
+        val segmentRegex =
+            Regex("""\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})\]\s*(.*)""")
+        val segments = mutableListOf<su.kamil.dev.golos.core.model.TimecodedSegment>()
+
+        for (line in raw.lines()) {
+            val match = segmentRegex.find(line.trim()) ?: continue
+            val (h1, m1, s1, ms1, h2, m2, s2, ms2, text) = match.destructured
+            val startMs = ((h1.toLong() * 60 + m1.toLong()) * 60 + s1.toLong()) * 1000 + ms1.toLong()
+            val endMs = ((h2.toLong() * 60 + m2.toLong()) * 60 + s2.toLong()) * 1000 + ms2.toLong()
+            var cleaned = text.replace(Regex("""\[BLANK_AUDIO\]|\[START\]"""), "").trim()
+            if (cleaned.contains("miniaudio")) {
+                cleaned = cleaned.substringAfter("miniaudio").trim()
+            }
+            if (cleaned.isNotEmpty()) {
+                val postProcessed =
+                    postProcessor.postProcess(
+                        cleaned,
+                        profile = activeProfile,
+                        settings = postProcessingSettings,
+                    )
+                segments.add(su.kamil.dev.golos.core.model.TimecodedSegment(startMs, endMs, postProcessed))
+            }
+        }
+        return segments
+    }
 
     internal fun cleanWhisperOutput(raw: String): String {
         val timestampRegex = Regex("\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\s*-->\\s*\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]")

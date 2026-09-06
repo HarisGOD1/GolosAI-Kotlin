@@ -50,10 +50,19 @@ class MockSpeechToTextEngine(
             delay(simulatedDelayMs)
         }
         val text = predeterminedText ?: "Simulated transcription of audio file ${file.name}."
+        val segments =
+            listOf(
+                su.kamil.dev.golos.core.model.TimecodedSegment(
+                    startMs = 0L,
+                    endMs = maxOf(1000L, simulatedDelayMs),
+                    text = text,
+                ),
+            )
         return TranscriptionResult(
             text = text,
             durationMs = simulatedDelayMs,
             confidence = 0.98f,
+            segments = segments,
         )
     }
 }

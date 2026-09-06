@@ -11,8 +11,11 @@ import su.kamil.dev.golos.app.history.HistoryManager
 import su.kamil.dev.golos.core.model.AudioDevice
 import su.kamil.dev.golos.core.model.AudioSettings
 import su.kamil.dev.golos.core.model.AutostartSettings
+import su.kamil.dev.golos.core.model.BatchItemState
+import su.kamil.dev.golos.core.model.BatchItemStatus
 import su.kamil.dev.golos.core.model.DictationState
 import su.kamil.dev.golos.core.model.EngineSettings
+import su.kamil.dev.golos.core.model.ExportFormat
 import su.kamil.dev.golos.core.model.GolosConfig
 import su.kamil.dev.golos.core.model.HistoryEntry
 import su.kamil.dev.golos.core.model.HotkeyConfig
@@ -64,6 +67,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.BorderFactory
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.DefaultComboBoxModel
@@ -287,6 +291,30 @@ class PreferencesDialog(
                 "General (Standard dictation)",
             ),
         )
+
+    // Batch Audio UI components (Criteria N-09..N-18)
+    private var selectedBatchFiles: List<File> = emptyList()
+    private var selectedBatchDir: File? = null
+    private val batchPathLabel = JLabel("No folder or files selected")
+    private val batchRecursiveCheck = JCheckBox("Include subfolders", false)
+    private val batchExportTxtCheck = JCheckBox("Text (.txt)", true)
+    private val batchExportSrtCheck = JCheckBox("SubRip (.srt)", true)
+    private val batchExportVttCheck = JCheckBox("WebVTT (.vtt)", true)
+    private val batchStartBtn = JButton("Start Batch")
+    private val batchCancelBtn = JButton("Cancel").apply { isEnabled = false }
+    private val batchOverallProgressBar =
+        JProgressBar(0, 100).apply {
+            isStringPainted = true
+            string = "0%"
+        }
+    private val batchStatusLabel = JLabel("Ready")
+    private val batchResultsPanel =
+        JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            background = Color(250, 250, 250)
+        }
+    private val batchSummaryLabel = JLabel("")
+    private var batchTranscriberJob: Job? = null
 
     private val coroutineScope = CoroutineScope(Dispatchers.Default + Job())
     private var availableDevices: List<AudioDevice> = emptyList()
@@ -526,6 +554,19 @@ class PreferencesDialog(
 
         // Tab 4: History
         tabbedPane.addTab(AppLocalization.tr("tab.history"), createHistoryTab())
+
+        // Tab 5: Batch Audio (Criteria N-09..N-18)
+        val batchScroll =
+            JScrollPane(
+                createBatchTab(),
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER,
+            ).apply {
+                border = null
+                viewport.background = Color(250, 250, 250)
+                verticalScrollBar.unitIncrement = 16
+            }
+        tabbedPane.addTab(AppLocalization.tr("tab.batch"), batchScroll)
 
         mainContainer.add(tabbedPane, BorderLayout.CENTER)
         add(mainContainer, BorderLayout.CENTER)
@@ -839,6 +880,7 @@ class PreferencesDialog(
             tabbedPane.setTitleAt(1, AppLocalization.tr("tab.settings"))
             tabbedPane.setTitleAt(2, AppLocalization.tr("tab.whisper"))
             tabbedPane.setTitleAt(3, AppLocalization.tr("tab.history"))
+            tabbedPane.setTitleAt(4, AppLocalization.tr("tab.batch"))
 
             collapseBtn.text = "[-] " + AppLocalization.tr("btn.collapse")
             collapseBtn.toolTipText = AppLocalization.tr("btn.collapse")
@@ -1912,6 +1954,303 @@ class PreferencesDialog(
         card.add(textArea, BorderLayout.CENTER)
 
         return card
+    }
+
+    private fun createBatchTab(): JPanel {
+        val panel = JPanel(BorderLayout(10, 10))
+        panel.border = EmptyBorder(12, 14, 12, 14)
+        panel.background = Color(250, 250, 250)
+
+        val topCard = JPanel(GridBagLayout())
+        topCard.background = Color.WHITE
+        topCard.border =
+            CompoundBorder(
+                LineBorder(Color(230, 230, 230), 1, true),
+                EmptyBorder(12, 14, 12, 14),
+            )
+        val gbc =
+            GridBagConstraints().apply {
+                fill = GridBagConstraints.HORIZONTAL
+                insets = Insets(4, 4, 4, 4)
+            }
+
+        // Selection row
+        gbc.gridx = 0
+        gbc.gridy = 0
+        gbc.weightx = 0.0
+        val chooseDirBtn =
+            JButton("Choose Folder...").apply {
+                font = FontManager.regular(FontManager.SMALL_SIZE)
+                styleMinimalistButton(this)
+                addActionListener { promptSelectBatchDirectory() }
+            }
+        topCard.add(chooseDirBtn, gbc)
+
+        gbc.gridx = 1
+        gbc.weightx = 0.0
+        val chooseFilesBtn =
+            JButton("Choose Files...").apply {
+                font = FontManager.regular(FontManager.SMALL_SIZE)
+                styleMinimalistButton(this)
+                addActionListener { promptSelectBatchFiles() }
+            }
+        topCard.add(chooseFilesBtn, gbc)
+
+        gbc.gridx = 2
+        gbc.weightx = 1.0
+        batchPathLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
+        batchPathLabel.foreground = Color(90, 90, 90)
+        topCard.add(batchPathLabel, gbc)
+
+        // Options row: Recursive & Export Formats
+        gbc.gridx = 0
+        gbc.gridy = 1
+        gbc.gridwidth = 3
+        val optionsPanel = JPanel(FlowLayout(FlowLayout.LEFT, 10, 0)).apply { isOpaque = false }
+        batchRecursiveCheck.font = FontManager.regular(FontManager.SMALL_SIZE)
+        batchRecursiveCheck.isOpaque = false
+        optionsPanel.add(batchRecursiveCheck)
+
+        val formatsLabel =
+            JLabel("Export:").apply {
+                font = FontManager.bold(FontManager.SMALL_SIZE)
+            }
+        optionsPanel.add(formatsLabel)
+
+        batchExportTxtCheck.font = FontManager.regular(FontManager.SMALL_SIZE)
+        batchExportTxtCheck.isOpaque = false
+        batchExportSrtCheck.font = FontManager.regular(FontManager.SMALL_SIZE)
+        batchExportSrtCheck.isOpaque = false
+        batchExportVttCheck.font = FontManager.regular(FontManager.SMALL_SIZE)
+        batchExportVttCheck.isOpaque = false
+        optionsPanel.add(batchExportTxtCheck)
+        optionsPanel.add(batchExportSrtCheck)
+        optionsPanel.add(batchExportVttCheck)
+        topCard.add(optionsPanel, gbc)
+
+        // Action row: Start & Cancel buttons
+        gbc.gridx = 0
+        gbc.gridy = 2
+        gbc.gridwidth = 3
+        val actionPanel = JPanel(FlowLayout(FlowLayout.LEFT, 10, 0)).apply { isOpaque = false }
+        batchStartBtn.font = FontManager.bold(FontManager.DEFAULT_SIZE)
+        styleMinimalistButton(batchStartBtn, isAccent = true)
+        batchStartBtn.addActionListener { startBatchTranscription() }
+        actionPanel.add(batchStartBtn)
+
+        batchCancelBtn.font = FontManager.regular(FontManager.DEFAULT_SIZE)
+        styleMinimalistButton(batchCancelBtn)
+        batchCancelBtn.addActionListener { cancelBatchTranscription() }
+        actionPanel.add(batchCancelBtn)
+
+        topCard.add(actionPanel, gbc)
+
+        // Progress row
+        gbc.gridx = 0
+        gbc.gridy = 3
+        gbc.gridwidth = 3
+        val progressPanel = JPanel(BorderLayout(6, 4)).apply { isOpaque = false }
+        batchOverallProgressBar.font = FontManager.mono(FontManager.SMALL_SIZE)
+        progressPanel.add(batchOverallProgressBar, BorderLayout.CENTER)
+        batchStatusLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
+        batchStatusLabel.foreground = Color(80, 80, 80)
+        progressPanel.add(batchStatusLabel, BorderLayout.SOUTH)
+        topCard.add(progressPanel, gbc)
+
+        panel.add(topCard, BorderLayout.NORTH)
+
+        // Center: Results scroll pane
+        val resultsScroll =
+            JScrollPane(
+                batchResultsPanel,
+                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER,
+            ).apply {
+                border = LineBorder(Color(230, 230, 230), 1)
+                viewport.background = Color(250, 250, 250)
+                verticalScrollBar.unitIncrement = 16
+            }
+        panel.add(resultsScroll, BorderLayout.CENTER)
+
+        // Bottom: Summary report
+        batchSummaryLabel.font = FontManager.mono(FontManager.SMALL_SIZE)
+        batchSummaryLabel.foreground = Color(60, 60, 60)
+        batchSummaryLabel.border = EmptyBorder(4, 4, 4, 4)
+        panel.add(batchSummaryLabel, BorderLayout.SOUTH)
+
+        return panel
+    }
+
+    private fun promptSelectBatchDirectory() {
+        val chooser = JFileChooser()
+        chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+        chooser.dialogTitle = "Select Audio Directory for Batch Transcription"
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            selectedBatchDir = chooser.selectedFile
+            selectedBatchFiles = emptyList()
+            batchPathLabel.text = "Folder: ${chooser.selectedFile.absolutePath}"
+        }
+    }
+
+    private fun promptSelectBatchFiles() {
+        val chooser = JFileChooser()
+        chooser.fileSelectionMode = JFileChooser.FILES_ONLY
+        chooser.isMultiSelectionEnabled = true
+        chooser.dialogTitle = "Select Audio Files for Batch Transcription"
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            selectedBatchFiles = chooser.selectedFiles.toList()
+            selectedBatchDir = null
+            batchPathLabel.text = "Selected ${selectedBatchFiles.size} audio file(s)"
+        }
+    }
+
+    private fun startBatchTranscription() {
+        val transcriber = orchestrator.batchTranscriber
+        val formats = mutableSetOf<ExportFormat>()
+        if (batchExportTxtCheck.isSelected) formats.add(ExportFormat.TXT)
+        if (batchExportSrtCheck.isSelected) formats.add(ExportFormat.SRT)
+        if (batchExportVttCheck.isSelected) formats.add(ExportFormat.VTT)
+
+        val filesToProcess =
+            if (selectedBatchFiles.isNotEmpty()) {
+                selectedBatchFiles
+            } else if (selectedBatchDir != null) {
+                val exts =
+                    setOf(
+                        "wav", "wave", "mp3", "ogg", "flac", "m4a", "aac", "mp4", "mkv", "avi", "mov", "webm",
+                    )
+                val seq =
+                    if (batchRecursiveCheck.isSelected) {
+                        selectedBatchDir!!.walkTopDown()
+                    } else {
+                        selectedBatchDir!!.listFiles()?.asSequence() ?: emptySequence()
+                    }
+                seq.filter { it.isFile && it.extension.lowercase() in exts }.sortedBy { it.name }.toList()
+            } else {
+                JOptionPane.showMessageDialog(
+                    this,
+                    "Please select an audio folder or files first.",
+                    "No Files Selected",
+                    JOptionPane.INFORMATION_MESSAGE,
+                )
+                return
+            }
+
+        if (filesToProcess.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                this,
+                "No supported audio files found in selected location.",
+                "No Audio Files",
+                JOptionPane.INFORMATION_MESSAGE,
+            )
+            return
+        }
+
+        batchResultsPanel.removeAll()
+        batchResultsPanel.revalidate()
+        batchResultsPanel.repaint()
+        batchStartBtn.isEnabled = false
+        batchCancelBtn.isEnabled = true
+        batchOverallProgressBar.value = 0
+        batchOverallProgressBar.string = "0% (0/${filesToProcess.size})"
+        batchStatusLabel.text = "Starting batch processing of ${filesToProcess.size} files..."
+
+        transcriber.onProgress = { p ->
+            SwingUtilities.invokeLater {
+                batchOverallProgressBar.value = (p.overallProgress * 100).toInt()
+                batchOverallProgressBar.string =
+                    "${(p.overallProgress * 100).toInt()}% (${p.completedFiles}/${p.totalFiles})"
+                val currentName = p.currentFile?.name ?: ""
+                batchStatusLabel.text = "Processing: $currentName (${(p.currentFileProgress * 100).toInt()}%)"
+            }
+        }
+
+        transcriber.onFileCompleted = { file, result, status ->
+            SwingUtilities.invokeLater {
+                if (result != null) {
+                    historyManager.addEntry(
+                        text = result.text,
+                        durationMs = status.audioDurationMs,
+                        engine = orchestrator.speechEngine.displayName,
+                        appName = "Batch: ${file.name}",
+                        profile = "GENERAL",
+                    )
+                    refreshHistoryList()
+                }
+                addBatchResultCard(status)
+            }
+        }
+
+        batchTranscriberJob =
+            coroutineScope.launch {
+                val summary = transcriber.processFiles(filesToProcess, formats)
+                SwingUtilities.invokeLater {
+                    batchStartBtn.isEnabled = true
+                    batchCancelBtn.isEnabled = false
+                    val rtfStr = String.format(Locale.US, "%.2fx", summary.overallRtf)
+                    val totalAudioSec = summary.totalAudioDurationMs / 1000L
+                    val totalProcSec = summary.totalProcessingTimeMs / 1000L
+                    batchStatusLabel.text =
+                        "Completed: ${summary.successfulFiles}/${summary.totalFiles} files | Overall RTF: $rtfStr"
+                    batchSummaryLabel.text =
+                        "Audio: ${totalAudioSec}s | Proc: ${totalProcSec}s | RTF: $rtfStr | Failed: ${summary.failedFiles}"
+                }
+            }
+    }
+
+    private fun cancelBatchTranscription() {
+        orchestrator.batchTranscriber.cancel()
+        batchTranscriberJob?.cancel()
+        batchStartBtn.isEnabled = true
+        batchCancelBtn.isEnabled = false
+        batchStatusLabel.text = "Batch processing cancelled."
+    }
+
+    private fun addBatchResultCard(status: BatchItemStatus) {
+        val card = JPanel(BorderLayout(8, 4))
+        card.background = Color.WHITE
+        card.border =
+            CompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, Color(230, 230, 230)),
+                EmptyBorder(8, 10, 8, 10),
+            )
+        card.maximumSize = Dimension(Short.MAX_VALUE.toInt(), 54)
+
+        val left = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { isOpaque = false }
+        val nameLabel =
+            JLabel(status.file.name).apply {
+                font = FontManager.bold(FontManager.DEFAULT_SIZE)
+            }
+        left.add(nameLabel)
+
+        val isOk = status.state == BatchItemState.COMPLETED
+        val statusBadge =
+            JLabel(status.state.name).apply {
+                font = FontManager.bold(FontManager.INDICATOR_SIZE)
+                foreground = if (isOk) Color(46, 125, 50) else Color(198, 40, 40)
+                if (status.errorMessage != null) {
+                    toolTipText = status.errorMessage
+                }
+            }
+        left.add(statusBadge)
+        card.add(left, BorderLayout.WEST)
+
+        val right = JPanel(FlowLayout(FlowLayout.RIGHT, 10, 0)).apply { isOpaque = false }
+        val rtfText = if (status.rtf > 0f) String.format(Locale.US, "RTF: %.2fx", status.rtf) else ""
+        val durText = if (status.audioDurationMs > 0L) "${status.audioDurationMs / 1000L}s" else ""
+        val procText = if (status.processingTimeMs > 0L) "${status.processingTimeMs}ms" else ""
+
+        val metricsLabel =
+            JLabel("$durText  |  $procText  |  $rtfText").apply {
+                font = FontManager.mono(FontManager.SMALL_SIZE)
+                foreground = Color(100, 100, 100)
+            }
+        right.add(metricsLabel)
+        card.add(right, BorderLayout.EAST)
+
+        batchResultsPanel.add(card)
+        batchResultsPanel.revalidate()
+        batchResultsPanel.repaint()
     }
 
     private fun updateBinaryStatus() {

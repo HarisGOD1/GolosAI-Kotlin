@@ -367,12 +367,29 @@
 
 ---
 
-### 34. Batch Audio File Transcription with Timecodes & RTF Reporting (`N-09`, `N-10`, `N-13`, `N-17`) [Planned]
-- **Goal**: Transcribe directories of audio files with batch progress tracking, subtitle export, and processing speed evaluation.
-- **Design**:
-  - Batch audio file selector and queue manager.
-  - Background execution with file-by-file and total progress bars.
-  - Export formats: Plain Text (`.txt`), SubRip Subtitles (`.srt`), WebVTT (`.vtt`) with timecodes.
-  - Report aggregate Real-Time Factor (RTF) upon completion.
-- **Criteria Alignment**: `N-09`, `N-10`, `N-13`, `N-17`.
+### 34. Batch Audio File Transcription with Timecodes & RTF Reporting (`N-01` - `N-18`) [Implemented]
+- **Goal**: Transcribe directories and queues of audio files with batch progress tracking, subtitle export, error tolerance, and processing speed evaluation.
+- **Implementation**:
+  - `AudioFileInspector`:
+    - Format and container validation for WAV, MP3, FLAC, OGG, M4A, and video audio streams (`N-01` to `N-05`).
+    - 44.1 kHz resampled to 16 kHz, and stereo downmixed to mono (`N-06`, `N-07`).
+    - Robust error tolerance: 0-byte files (`N-16`), corrupted headers (`N-14`), non-audio formats (`N-15`) report clear errors without breaking the batch queue.
+  - `SubtitleExporter`:
+    - Clean Plain Text (`.txt`) export (`N-12`).
+    - SubRip Subtitles (`.srt`) with `HH:mm:ss,SSS` timecodes (`N-13`).
+    - WebVTT Subtitles (`.vtt`) with `HH:mm:ss.SSS` timecodes (`N-13`).
+  - `WhisperCppEngine` & `MockSpeechToTextEngine`:
+    - Native timecoded segment parsing from stdout markers (`[00:00:00.000 --> 00:00:02.500]`).
+    - `TranscriptionResult.segments` carries post-processed `TimecodedSegment` entries.
+  - `BatchAudioTranscriber`:
+    - Queueing of directory or multiple individual files with recursive option (`N-09`).
+    - Real-time overall and file-level progress reporting callbacks (`N-10`).
+    - Per-file completion notification (`N-11`).
+    - Automatic history integration (`historyManager.addEntry`) for completed files (`N-18`).
+    - Per-file and aggregate Real-Time Factor ($RTF = T_{proc} / T_{audio}$) calculation and summary (`N-17`).
+  - UI Integration (`PreferencesDialog`):
+    - Added dedicated "Batch Audio" tab (Tab 5) with directory/file selectors, export checkboxes, progress bars, and Hack monospace metrics table.
+    - Localized across all 10 supported interface languages.
+- **Criteria Alignment**: `N-01` to `N-18`.
+
 
