@@ -1422,6 +1422,95 @@ class PreferencesDialog(
                 )
             }
         }
+        if (su.kamil.dev.golos.system.linux.LinuxPermissionManager.isLinux()) {
+            val permPanel =
+                JPanel(BorderLayout(6, 4)).apply {
+                    border =
+                        BorderFactory.createCompoundBorder(
+                            BorderFactory.createLineBorder(Color(220, 220, 220), 1),
+                            EmptyBorder(6, 8, 6, 8),
+                        )
+                }
+            val permStatusLabel = JLabel()
+            val permBtn =
+                JButton("Grant Permission").apply {
+                    font = FontManager.regular(FontManager.SMALL_SIZE)
+                    styleMinimalistButton(this)
+                }
+            val copyCmdBtn =
+                JButton("Terminal Command").apply {
+                    font = FontManager.regular(FontManager.SMALL_SIZE)
+                    styleMinimalistButton(this)
+                }
+
+            fun updatePermStatus() {
+                val hasPerms = su.kamil.dev.golos.system.linux.LinuxPermissionManager.hasInputPermissions()
+                if (hasPerms) {
+                    permStatusLabel.text = "Wayland Hotkeys: Input permissions active (Browser/Telegram supported)"
+                    permStatusLabel.foreground = Color(0, 128, 0)
+                    permBtn.isVisible = false
+                    copyCmdBtn.isVisible = false
+                } else {
+                    permStatusLabel.text = "Wayland Hotkeys: Missing permissions for Browser/Telegram"
+                    permStatusLabel.foreground = Color(180, 50, 0)
+                    permBtn.isVisible = true
+                    copyCmdBtn.isVisible = true
+                }
+            }
+            updatePermStatus()
+
+            permBtn.addActionListener {
+                permBtn.isEnabled = false
+                permStatusLabel.text = "Requesting permissions via pkexec..."
+                su.kamil.dev.golos.system.linux.LinuxPermissionManager.requestPermissionsAsync { granted ->
+                    SwingUtilities.invokeLater {
+                        permBtn.isEnabled = true
+                        updatePermStatus()
+                        if (granted) {
+                            orchestrator.updateHotkey(orchestrator.currentHotkey)
+                            JOptionPane.showMessageDialog(
+                                this@PreferencesDialog,
+                                "Wayland permissions granted! Global hotkey is active for Browser and Telegram.",
+                                "Permissions Granted",
+                                JOptionPane.INFORMATION_MESSAGE,
+                            )
+                        } else {
+                            JOptionPane.showMessageDialog(
+                                this@PreferencesDialog,
+                                "Permission request cancelled or failed.\nRun in terminal:\n" +
+                                    su.kamil.dev.golos.system.linux.LinuxPermissionManager.getManualCommand(),
+                                "Permission Required",
+                                JOptionPane.WARNING_MESSAGE,
+                            )
+                        }
+                    }
+                }
+            }
+
+            copyCmdBtn.addActionListener {
+                val cmd = su.kamil.dev.golos.system.linux.LinuxPermissionManager.getManualCommand()
+                try {
+                    val sel = StringSelection(cmd)
+                    Toolkit.getDefaultToolkit().systemClipboard.setContents(sel, null)
+                } catch (_: Exception) {
+                }
+                JOptionPane.showMessageDialog(
+                    this@PreferencesDialog,
+                    "Command copied to clipboard:\n\n$cmd\n\nRun this in a terminal to grant permanent access.",
+                    "Wayland Input Setup",
+                    JOptionPane.INFORMATION_MESSAGE,
+                )
+            }
+
+            val permBtnBox = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0))
+            permBtnBox.add(copyCmdBtn)
+            permBtnBox.add(permBtn)
+
+            permPanel.add(permStatusLabel, BorderLayout.CENTER)
+            permPanel.add(permBtnBox, BorderLayout.EAST)
+            hotkeyOuterPanel.add(permPanel, BorderLayout.CENTER)
+        }
+
         hotkeyEditPanel.add(applyHotkeyBtn)
         hotkeyOuterPanel.add(hotkeyEditPanel, BorderLayout.SOUTH)
         panel.add(hotkeyOuterPanel, gbc)

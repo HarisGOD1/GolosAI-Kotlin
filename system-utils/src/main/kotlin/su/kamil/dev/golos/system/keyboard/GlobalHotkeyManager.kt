@@ -16,6 +16,16 @@ import java.util.concurrent.atomic.AtomicBoolean
  * (covering Mod5/ISO_Level3_Shift, NumLock, CapsLock, ScrollLock) to reliably capture hotkeys in unfocused windows
  * without auto-repeat self-release artifacts.
  */
+@Suppress(
+    "ReturnCount",
+    "MaxLineLength",
+    "MagicNumber",
+    "TooGenericExceptionCaught",
+    "LongMethod",
+    "CyclomaticComplexMethod",
+    "TooManyFunctions",
+    "NestedBlockDepth",
+)
 class GlobalHotkeyManager : GlobalHotkeyHook {
     companion object {
         private const val MASK_SHIFT = 1
@@ -197,6 +207,7 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                     )
 
                     val eventMemory = Memory(EVENT_BUFFER_BYTES.toLong())
+                    var pollCounter = 0
 
                     while (isHookActive.get()) {
                         if (x11.XPending(display) > 0) {
@@ -215,24 +226,37 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                                     }
                                 }
                                 EVENT_KEY_RELEASE -> {
-                                    if (hasDetectable) {
-                                        // XKB detectable auto-repeat emits KeyRelease only on physical release
-                                        if (isKeyCurrentlyDown.compareAndSet(true, false)) {
-                                            logger.debug("Global hotkey KeyRelease confirmed: {}", config.displayText)
-                                            onKeyUp()
-                                        }
+                                    val keysReturn = ByteArray(KEYMAP_BYTES)
+                                    x11.XQueryKeymap(display, keysReturn)
+                                    val byteIdx = grabbedKeycode / BITS_PER_BYTE
+                                    val bitMask = 1 shl (grabbedKeycode % BITS_PER_BYTE)
+                                    val isPhysicallyDown = (keysReturn[byteIdx].toInt() and bitMask) != 0
+
+                                    if (isPhysicallyDown) {
+                                        logger.trace("X11 auto-repeat or synthetic release ignored via XQueryKeymap")
                                     } else {
-                                        // Debounce for servers without detectable auto-repeat
                                         synchronized(this) {
                                             pendingReleaseJob?.cancel(false)
                                             pendingReleaseJob =
                                                 debounceScheduler.schedule({
-                                                    if (isKeyCurrentlyDown.compareAndSet(true, false)) {
-                                                        logger.debug(
-                                                            "Global hotkey KeyRelease confirmed (fallback): {}",
-                                                            config.displayText,
+                                                    val verifyKeys = ByteArray(KEYMAP_BYTES)
+                                                    x11.XQueryKeymap(display, verifyKeys)
+                                                    val verifyByte = grabbedKeycode / BITS_PER_BYTE
+                                                    val verifyBit = 1 shl (grabbedKeycode % BITS_PER_BYTE)
+                                                    val stillDown = (verifyKeys[verifyByte].toInt() and verifyBit) != 0
+                                                    if (!stillDown) {
+                                                        if (isKeyCurrentlyDown.compareAndSet(true, false)) {
+                                                            logger.debug(
+                                                                "Global hotkey KeyRelease confirmed: {}",
+                                                                config.displayText,
+                                                            )
+                                                            onKeyUp()
+                                                        }
+                                                    } else {
+                                                        logger.trace(
+                                                            "Key still physically pressed after debounce; " +
+                                                                "ignoring transient release",
                                                         )
-                                                        onKeyUp()
                                                     }
                                                 }, DEBOUNCE_DELAY_MS, TimeUnit.MILLISECONDS)
                                         }
@@ -240,6 +264,29 @@ class GlobalHotkeyManager : GlobalHotkeyHook {
                                 }
                             }
                         } else {
+                            if (isKeyCurrentlyDown.get()) {
+                                pollCounter++
+                                if (pollCounter >= SUPERVISOR_INTERVAL_TICKS) {
+                                    pollCounter = 0
+                                    val keysReturn = ByteArray(KEYMAP_BYTES)
+                                    x11.XQueryKeymap(display, keysReturn)
+                                    val sByte = grabbedKeycode / BITS_PER_BYTE
+                                    val sBit = 1 shl (grabbedKeycode % BITS_PER_BYTE)
+                                    val isPhysicallyDown = (keysReturn[sByte].toInt() and sBit) != 0
+                                    if (!isPhysicallyDown) {
+                                        if (isKeyCurrentlyDown.compareAndSet(true, false)) {
+                                            logger.debug(
+                                                "Supervisor: key physically released: {}",
+                                                config.displayText,
+                                            )
+                                            onKeyUp()
+                                        }
+                                    }
+                                }
+                            } else {
+                                pollCounter = 0
+                            }
+
                             try {
                                 Thread.sleep(LOOP_SLEEP_MS)
                             } catch (_: InterruptedException) {

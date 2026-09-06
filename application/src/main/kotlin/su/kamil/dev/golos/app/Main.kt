@@ -10,7 +10,8 @@ import su.kamil.dev.golos.core.state.DictationStateMachine
 import su.kamil.dev.golos.system.audio.JavaSoundAudioCapture
 import su.kamil.dev.golos.system.autostart.AutoStartManager
 import su.kamil.dev.golos.system.input.ActiveWindowTextInjector
-import su.kamil.dev.golos.system.keyboard.GlobalHotkeyManager
+import su.kamil.dev.golos.system.keyboard.CompositeGlobalHotkeyHook
+import su.kamil.dev.golos.system.linux.LinuxPermissionManager
 import su.kamil.dev.golos.voice.download.ModelDownloader
 import su.kamil.dev.golos.voice.download.WhisperBinaryManager
 import su.kamil.dev.golos.voice.download.WhisperModelInfo
@@ -35,6 +36,24 @@ fun main() {
         return
     }
 
+    // Check Linux Wayland input permissions
+    if (LinuxPermissionManager.isLinux() && LinuxPermissionManager.needsPermissions()) {
+        logger.info(
+            "Linux /dev/input permissions not found. Hotkeys in native Wayland applications " +
+                "(Browser, Telegram) require input group access. Requesting permissions...",
+        )
+        LinuxPermissionManager.requestPermissionsAsync { granted ->
+            if (granted) {
+                logger.info("Linux input permissions granted successfully.")
+            } else {
+                logger.warn(
+                    "Linux input permissions not granted. To enable hotkeys in native Wayland applications, run: {}",
+                    LinuxPermissionManager.getManualCommand(),
+                )
+            }
+        }
+    }
+
     // 1. Settings & Persistence Contract
     val settingsManager = SettingsManager()
     val config = settingsManager.load()
@@ -48,7 +67,7 @@ fun main() {
     // 2. Core State Machine & System Utilities
     val stateMachine = DictationStateMachine()
     val audioCapture = JavaSoundAudioCapture()
-    val hotkeyHook = GlobalHotkeyManager()
+    val hotkeyHook = CompositeGlobalHotkeyHook()
     val textInjector = ActiveWindowTextInjector()
     textInjector.initialize()
 

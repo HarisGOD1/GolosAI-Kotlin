@@ -451,8 +451,7 @@ class DictationOrchestratorTest {
             var currentWindowToReturn = startWindow
             val dynamicDetector =
                 object : su.kamil.dev.golos.core.ports.ActiveWindowDetectorPort {
-                    override fun detectActiveWindow(): su.kamil.dev.golos.core.model.ActiveWindowInfo =
-                        currentWindowToReturn
+                    override fun detectActiveWindow(): su.kamil.dev.golos.core.model.ActiveWindowInfo = currentWindowToReturn
                 }
 
             val fakeInjector = FakeTextInjector()
@@ -484,4 +483,3 @@ class DictationOrchestratorTest {
             assertTrue(fakeInjector.injected.isNotEmpty())
         }
 }
-

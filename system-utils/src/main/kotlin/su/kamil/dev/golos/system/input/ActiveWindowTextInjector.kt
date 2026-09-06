@@ -65,6 +65,7 @@ class ActiveWindowTextInjector(
     private val pasteDelayMs: Long = DEFAULT_PASTE_DELAY_MS,
     val clipboardPreserver: ClipboardPreserver = ClipboardPreserver(),
     private val restoreDelayMs: Long = DEFAULT_RESTORE_DELAY_MS,
+    val uinputInjector: UinputKeyboardInjector = UinputKeyboardInjector(),
 ) : TextInjectorPort {
     private val logger = LoggerFactory.getLogger(ActiveWindowTextInjector::class.java)
     private var cachedRobot: Robot? = null
@@ -77,6 +78,10 @@ class ActiveWindowTextInjector(
     override fun initialize(): Result<Unit> =
         runCatching {
             logger.info("Initializing text injector at startup...")
+            if (uinputInjector.isAvailable()) {
+                uinputInjector.initialize()
+                logger.info("Linux /dev/uinput virtual keyboard initialized (Wayland direct input ready).")
+            }
             if (XtstLib.INSTANCE != null) {
                 logger.info("Native X11 XTEST extension detected and ready (zero-portal direct input).")
             } else {
@@ -200,7 +205,16 @@ class ActiveWindowTextInjector(
         logger.debug("Headless environment handled injection via method: [{}]", method)
     }
 
+    fun isWayland(): Boolean {
+        val waylandDisplay = System.getenv("WAYLAND_DISPLAY")
+        val sessionType = System.getenv("XDG_SESSION_TYPE")
+        return !waylandDisplay.isNullOrEmpty() || sessionType?.lowercase() == "wayland"
+    }
+
     private fun isInputFieldFocused(): Boolean {
+        if (isWayland()) {
+            return true
+        }
         val x11 = X11Lib.INSTANCE ?: return true
         val display = x11.XOpenDisplay(null) ?: return true
 
@@ -262,7 +276,7 @@ class ActiveWindowTextInjector(
     private fun tryXdotoolType(text: String): Boolean {
         return try {
             val process =
-                ProcessBuilder("xdotool", "type", "--clearmodifiers", "--delay", "5", "--", text)
+                ProcessBuilder("xdotool", "type", "--delay", "5", "--", text)
                     .start()
             val finished = process.waitFor(PROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             finished && process.exitValue() == 0
@@ -387,10 +401,24 @@ class ActiveWindowTextInjector(
     }
 
     private fun dispatchPasteKeystroke(): Boolean {
+        // 1. If /dev/uinput virtual keyboard is available, use direct kernel injection (Wayland & universal)
+        if (uinputInjector.isAvailable() && uinputInjector.sendPasteKeystroke()) {
+            return true
+        }
+
+        // 2. If on Wayland, try Wayland virtual keyboard / tools
+        if (isWayland()) {
+            if (tryWtypePaste() || tryYdotoolPaste()) {
+                return true
+            }
+        }
+
+        // 3. Try native X11 XTEST
         if (XtstLib.INSTANCE != null && tryXtstPaste()) {
             return true
         }
 
+        // 4. Try xdotool
         if (tryXdotoolPaste()) {
             return true
         }
@@ -413,6 +441,24 @@ class ActiveWindowTextInjector(
         }
         return false
     }
+
+    private fun tryWtypePaste(): Boolean =
+        try {
+            val process = ProcessBuilder("wtype", "-M", "ctrl", "-k", "v", "-m", "ctrl").start()
+            val finished = process.waitFor(PASTE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            finished && process.exitValue() == 0
+        } catch (_: Exception) {
+            false
+        }
+
+    private fun tryYdotoolPaste(): Boolean =
+        try {
+            val process = ProcessBuilder("ydotool", "key", "29:1", "47:1", "47:0", "29:0").start()
+            val finished = process.waitFor(PASTE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            finished && process.exitValue() == 0
+        } catch (_: Exception) {
+            false
+        }
 
     private fun tryXtstPaste(): Boolean {
         val xtst = XtstLib.INSTANCE ?: return false
@@ -444,7 +490,7 @@ class ActiveWindowTextInjector(
     private fun tryXdotoolPaste(): Boolean {
         return try {
             val process =
-                ProcessBuilder("xdotool", "key", "--clearmodifiers", "ctrl+v")
+                ProcessBuilder("xdotool", "key", "ctrl+v")
                     .start()
             val finished = process.waitFor(PASTE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             finished && process.exitValue() == 0

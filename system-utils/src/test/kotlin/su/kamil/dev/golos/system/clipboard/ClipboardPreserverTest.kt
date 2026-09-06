@@ -122,11 +122,12 @@ class ClipboardPreserverTest {
             Clipboard("RetrySuccessClipboard")
         }
 
-        val preserver = ClipboardPreserver(
-            clipboardSupplier = mockSupplier,
-            maxRetries = 4,
-            retryDelayMs = 5,
-        )
+        val preserver =
+            ClipboardPreserver(
+                clipboardSupplier = mockSupplier,
+                maxRetries = 4,
+                retryDelayMs = 5,
+            )
 
         val snapshot = preserver.capture()
         assertEquals(ClipboardSnapshot.Empty, snapshot)
