@@ -65,6 +65,12 @@ class GuiSnapshotTest {
 
     @Test
     fun `render UI snapshots of all screens to PNG`() {
+        val headless = System.getProperty("java.awt.headless") == "true" ||
+            java.awt.GraphicsEnvironment.isHeadless()
+        org.junit.jupiter.api.Assumptions.assumeFalse(
+            headless,
+            "Skipping GUI snapshot test in headless environment",
+        )
         val outDir = File("build/screenshots").apply { mkdirs() }
         val mockEngine = MockSpeechToTextEngine(predeterminedText = "Testing GolosAI Speech recognition snapshot")
         val orchestrator =

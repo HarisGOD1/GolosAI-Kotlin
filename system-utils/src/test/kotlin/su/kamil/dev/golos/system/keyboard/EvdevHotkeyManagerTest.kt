@@ -4,12 +4,15 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.condition.EnabledOnOs
+import org.junit.jupiter.api.condition.OS
 import su.kamil.dev.golos.core.model.HotkeyConfig
 import su.kamil.dev.golos.system.linux.LinuxLibC
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentLinkedQueue
 
+@EnabledOnOs(OS.LINUX)
 class EvdevHotkeyManagerTest {
     private class FakeLinuxLibC : LinuxLibC {
         val eventQueue = ConcurrentLinkedQueue<ByteArray>()
