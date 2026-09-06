@@ -40,16 +40,23 @@ class DictationOrchestrator(
 
     val state: StateFlow<DictationState> = stateMachine.state
     var onTranscriptionCompleted: ((TranscriptionResult, SpeechToTextEngine) -> Unit)? = null
+    var onAudioLevel: ((rmsDb: Float, peakDb: Float, isClipping: Boolean) -> Unit)? = null
+    var onAudioWarning: ((su.kamil.dev.golos.core.model.AudioWarningType) -> Unit)? = null
 
     private var streamingJob: kotlinx.coroutines.Job? = null
     private val liveAudioStream = java.io.ByteArrayOutputStream()
     private val committedWords = mutableListOf<String>()
     private val recordingStartTime = AtomicLong(0L)
+    private var silenceStartTime = 0L
+    private var isTestingMic = false
 
     companion object {
         private const val MIN_REPLICA_DURATION_MS = 200L
         private const val STREAMING_DELAY_MS = 400L
         private const val MIN_STREAMING_BYTES = 16000
+        private const val SILENCE_THRESHOLD_DB = -50.0f
+        private const val SILENCE_DURATION_THRESHOLD_MS = 1500L
+        private const val DB_SILENT = -96.0f
     }
 
     /**
@@ -128,6 +135,8 @@ class DictationOrchestrator(
     fun onPushToTalkPressed() {
         if (stateMachine.startRecording()) {
             recordingStartTime.set(System.currentTimeMillis())
+            silenceStartTime = 0L
+            onAudioWarning?.invoke(su.kamil.dev.golos.core.model.AudioWarningType.NONE)
             logger.info("State changed -> RECORDING. Starting audio capture.")
             synchronized(liveAudioStream) {
                 liveAudioStream.reset()
@@ -137,6 +146,9 @@ class DictationOrchestrator(
             }
 
             try {
+                audioCapture.onAudioLevel = { rmsDb, peakDb, isClipping ->
+                    handleAudioLevel(rmsDb, peakDb, isClipping)
+                }
                 audioCapture.startCapture(selectedDevice) { chunk ->
                     logger.trace("Audio chunk captured: {} bytes", chunk.samples.size)
                     synchronized(liveAudioStream) {
@@ -203,6 +215,9 @@ class DictationOrchestrator(
     fun onPushToTalkReleased() {
         streamingJob?.cancel()
         streamingJob = null
+        silenceStartTime = 0L
+        onAudioLevel?.invoke(DB_SILENT, DB_SILENT, false)
+        onAudioWarning?.invoke(su.kamil.dev.golos.core.model.AudioWarningType.NONE)
 
         if (stateMachine.startProcessing()) {
             logger.info("State changed -> PROCESSING. Stopping capture and running speech recognition.")
@@ -287,6 +302,57 @@ class DictationOrchestrator(
             }
         }
     }
+
+    private fun handleAudioLevel(
+        rmsDb: Float,
+        peakDb: Float,
+        isClipping: Boolean,
+    ) {
+        onAudioLevel?.invoke(rmsDb, peakDb, isClipping)
+        if (stateMachine.state.value == DictationState.RECORDING) {
+            val now = System.currentTimeMillis()
+            if (rmsDb < SILENCE_THRESHOLD_DB) {
+                if (silenceStartTime == 0L) {
+                    silenceStartTime = now
+                } else if (now - silenceStartTime >= SILENCE_DURATION_THRESHOLD_MS) {
+                    onAudioWarning?.invoke(su.kamil.dev.golos.core.model.AudioWarningType.SILENCE_MUTED)
+                }
+            } else {
+                silenceStartTime = 0L
+                if (isClipping) {
+                    onAudioWarning?.invoke(su.kamil.dev.golos.core.model.AudioWarningType.CLIPPING)
+                } else {
+                    onAudioWarning?.invoke(su.kamil.dev.golos.core.model.AudioWarningType.NONE)
+                }
+            }
+        }
+    }
+
+    /**
+     * Starts preview audio level capture for microphone testing in settings dialog (Criterion C-07).
+     */
+    fun startAudioTest(onLevel: (rmsDb: Float, peakDb: Float, isClipping: Boolean) -> Unit) {
+        if (stateMachine.state.value != DictationState.IDLE || isTestingMic) return
+        isTestingMic = true
+        audioCapture.onAudioLevel = { rmsDb, peakDb, isClipping ->
+            onLevel(rmsDb, peakDb, isClipping)
+        }
+        audioCapture.startCapture(selectedDevice) { /* Discard test chunks */ }
+    }
+
+    /**
+     * Stops preview audio level capture.
+     */
+    fun stopAudioTest() {
+        if (!isTestingMic) return
+        isTestingMic = false
+        audioCapture.stopCapture()
+        audioCapture.onAudioLevel = null
+        onAudioLevel?.invoke(DB_SILENT, DB_SILENT, false)
+        onAudioWarning?.invoke(su.kamil.dev.golos.core.model.AudioWarningType.NONE)
+    }
+
+    fun isTestingAudio(): Boolean = isTestingMic
 
     fun stop() {
         streamingJob?.cancel()

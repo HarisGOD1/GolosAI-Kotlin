@@ -134,6 +134,7 @@ class SettingsManager(
                 linkedMapOf(
                     "deviceName" to c.audio.deviceName,
                     "provider" to c.audio.provider,
+                    "gain" to c.audio.gain,
                 ),
             "engine" to
                 linkedMapOf(
@@ -185,6 +186,7 @@ class SettingsManager(
             AudioSettings(
                 deviceName = audMap["deviceName"]?.toString() ?: "",
                 provider = audMap["provider"]?.toString() ?: "JavaSound",
+                gain = (audMap["gain"] as? Number)?.toFloat() ?: 1.0f,
             )
 
         val engMap = map["engine"] as? Map<String, Any> ?: emptyMap()

@@ -62,6 +62,7 @@ import java.awt.image.BufferedImage
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.Box
 import javax.swing.BoxLayout
@@ -299,6 +300,18 @@ class PreferencesDialog(
     private val langLabel = JLabel(AppLocalization.tr("label.ui_language"))
     private val provLabel = JLabel(AppLocalization.tr("label.audio_provider"))
     private val micLabel = JLabel(AppLocalization.tr("label.microphone"))
+    private val gainLabel = JLabel(AppLocalization.tr("label.input_gain"))
+    private val inputLevelLabel = JLabel(AppLocalization.tr("label.input_level"))
+    private val gainSlider = javax.swing.JSlider(0, 200, 100)
+    private val gainValueLabel =
+        JLabel("100% (1.0x)").apply {
+            font = FontManager.mono(FontManager.SMALL_SIZE)
+            foreground = Color(60, 70, 85)
+        }
+    private val testMicButton = JButton(AppLocalization.tr("btn.test_mic"))
+
+    val dashboardVuMeter = AudioVuMeterWidget(showTitle = false)
+    val settingsVuMeter = AudioVuMeterWidget(showTitle = false)
     private val engLabel = JLabel(AppLocalization.tr("label.engine"))
     private val hkLabel = JLabel(AppLocalization.tr("label.hotkey"))
     private val insLabel = JLabel(AppLocalization.tr("label.insertion_mode"))
@@ -507,6 +520,30 @@ class PreferencesDialog(
         setupCollapsedBar()
         syncInjectionConfig()
         renderStatus(orchestrator.state.value)
+
+        orchestrator.onAudioLevel = { rmsDb, peakDb, isClipping ->
+            SwingUtilities.invokeLater {
+                dashboardVuMeter.updateLevel(rmsDb, peakDb, isClipping)
+                if (orchestrator.isTestingAudio()) {
+                    settingsVuMeter.updateLevel(rmsDb, peakDb, isClipping)
+                }
+            }
+        }
+        orchestrator.onAudioWarning = { warning ->
+            SwingUtilities.invokeLater {
+                dashboardVuMeter.updateWarning(warning)
+                if (orchestrator.isTestingAudio()) {
+                    settingsVuMeter.updateWarning(warning)
+                }
+            }
+        }
+        tabbedPane.addChangeListener {
+            if (tabbedPane.selectedIndex != 1 && orchestrator.isTestingAudio()) {
+                orchestrator.stopAudioTest()
+                testMicButton.text = AppLocalization.tr("btn.test_mic")
+                settingsVuMeter.reset()
+            }
+        }
     }
 
     private fun setupCollapsedBar() {
@@ -673,13 +710,19 @@ class PreferencesDialog(
         )
         topActionBox.add(pttButton, BorderLayout.NORTH)
 
+        val middleBox = JPanel(BorderLayout(0, 6))
+        middleBox.isOpaque = false
+        middleBox.add(dashboardVuMeter, BorderLayout.NORTH)
+
         // 3 Efficiency Metrics Panels: Current Text, History Mean, All Time
         val metricsGrid = JPanel(GridLayout(1, 3, 8, 0))
         metricsGrid.isOpaque = false
         metricsGrid.add(currentMetricsCard)
         metricsGrid.add(historyMetricsCard)
         metricsGrid.add(allTimeMetricsCard)
-        topActionBox.add(metricsGrid, BorderLayout.CENTER)
+        middleBox.add(metricsGrid, BorderLayout.CENTER)
+
+        topActionBox.add(middleBox, BorderLayout.CENTER)
 
         centerPanel.add(topActionBox, BorderLayout.NORTH)
 
@@ -798,6 +841,14 @@ class PreferencesDialog(
             langLabel.text = AppLocalization.tr("label.ui_language")
             provLabel.text = AppLocalization.tr("label.audio_provider")
             micLabel.text = AppLocalization.tr("label.microphone")
+            gainLabel.text = AppLocalization.tr("label.input_gain")
+            inputLevelLabel.text = AppLocalization.tr("label.input_level")
+            testMicButton.text =
+                if (orchestrator.isTestingAudio()) {
+                    AppLocalization.tr("btn.stop_test")
+                } else {
+                    AppLocalization.tr("btn.test_mic")
+                }
             engLabel.text = AppLocalization.tr("label.engine")
             hkLabel.text = AppLocalization.tr("label.hotkey")
             triggerModeLabel.text = AppLocalization.tr("label.trigger_mode")
@@ -1125,9 +1176,58 @@ class PreferencesDialog(
         micPanel.add(clueLabel, BorderLayout.SOUTH)
         panel.add(micPanel, gbc)
 
-        // 3. Speech-to-Text Engine Selection
+        // 3. Microphone Input Gain (Criterion C-09)
         gbc.gridx = 0
         gbc.gridy = 3
+        gbc.weightx = 0.32
+        panel.add(gainLabel, gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.68
+        val gainPanel = JPanel(BorderLayout(8, 0))
+        gainPanel.isOpaque = false
+        gainSlider.isOpaque = false
+        gainSlider.addChangeListener {
+            val v = gainSlider.value
+            val multiplier = v / 100.0f
+            gainValueLabel.text = String.format(Locale.US, "%d%% (%.1fx)", v, multiplier)
+            orchestrator.audioCapture.gain = multiplier
+            saveCurrentConfig()
+        }
+        gainPanel.add(gainSlider, BorderLayout.CENTER)
+        gainPanel.add(gainValueLabel, BorderLayout.EAST)
+        panel.add(gainPanel, gbc)
+
+        // 4. Live Audio Input Level & Test Mic (Criteria C-07, C-08, E-07)
+        gbc.gridx = 0
+        gbc.gridy = 4
+        gbc.weightx = 0.32
+        panel.add(inputLevelLabel, gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.68
+        val testPanel = JPanel(BorderLayout(8, 0))
+        testPanel.isOpaque = false
+        testPanel.add(settingsVuMeter, BorderLayout.CENTER)
+        styleMinimalistButton(testMicButton)
+        testMicButton.addActionListener {
+            if (orchestrator.isTestingAudio()) {
+                orchestrator.stopAudioTest()
+                testMicButton.text = AppLocalization.tr("btn.test_mic")
+                settingsVuMeter.reset()
+            } else {
+                testMicButton.text = AppLocalization.tr("btn.stop_test")
+                orchestrator.startAudioTest { rms, peak, clipping ->
+                    SwingUtilities.invokeLater {
+                        settingsVuMeter.updateLevel(rms, peak, clipping)
+                    }
+                }
+            }
+        }
+        testPanel.add(testMicButton, BorderLayout.EAST)
+        panel.add(testPanel, gbc)
+
+        // 5. Speech-to-Text Engine Selection
+        gbc.gridx = 0
+        gbc.gridy = 5
         gbc.weightx = 0.32
         panel.add(engLabel, gbc)
         gbc.gridx = 1
@@ -1142,9 +1242,9 @@ class PreferencesDialog(
         }
         panel.add(engineCombo, gbc)
 
-        // 4. Global Push-to-Talk Hotkey
+        // 6. Global Push-to-Talk Hotkey
         gbc.gridx = 0
-        gbc.gridy = 4
+        gbc.gridy = 6
         gbc.weightx = 0.32
         panel.add(hkLabel, gbc)
         gbc.gridx = 1
@@ -1271,9 +1371,9 @@ class PreferencesDialog(
         hotkeyOuterPanel.add(hotkeyEditPanel, BorderLayout.SOUTH)
         panel.add(hotkeyOuterPanel, gbc)
 
-        // 4b. Hotkey Trigger Mode (Hold to Talk vs Toggle On/Off - Criterion D-03)
+        // 7. Hotkey Trigger Mode (Hold to Talk vs Toggle On/Off - Criterion D-03)
         gbc.gridx = 0
-        gbc.gridy = 5
+        gbc.gridy = 7
         gbc.weightx = 0.32
         panel.add(triggerModeLabel, gbc)
         gbc.gridx = 1
@@ -1291,9 +1391,9 @@ class PreferencesDialog(
         }
         panel.add(triggerModeCombo, gbc)
 
-        // 5. Text Insertion Mode
+        // 8. Text Insertion Mode
         gbc.gridx = 0
-        gbc.gridy = 6
+        gbc.gridy = 8
         gbc.weightx = 0.32
         panel.add(insLabel, gbc)
         gbc.gridx = 1
@@ -1320,9 +1420,9 @@ class PreferencesDialog(
         }
         panel.add(timingCombo, gbc)
 
-        // 7. Clipboard Privacy Options
+        // 10. Clipboard Privacy Options
         gbc.gridx = 0
-        gbc.gridy = 8
+        gbc.gridy = 10
         gbc.weightx = 0.32
         panel.add(privLabel, gbc)
         gbc.gridx = 1
@@ -1340,9 +1440,9 @@ class PreferencesDialog(
         privacyPanel.add(fallbackClipboardCheck)
         panel.add(privacyPanel, gbc)
 
-        // 8. System Autostart
+        // 11. System Autostart
         gbc.gridx = 0
-        gbc.gridy = 9
+        gbc.gridy = 11
         gbc.weightx = 0.32
         panel.add(autoLabel, gbc)
         gbc.gridx = 1
@@ -1354,9 +1454,9 @@ class PreferencesDialog(
         }
         panel.add(autostartCheck, gbc)
 
-        // 9. Configuration Toolbar (Reset, Export, Import)
+        // 12. Configuration Toolbar (Reset, Export, Import)
         gbc.gridx = 0
-        gbc.gridy = 10
+        gbc.gridy = 12
         gbc.gridwidth = 2
         gbc.weightx = 1.0
         val configBar = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 4))
@@ -1975,6 +2075,12 @@ class PreferencesDialog(
             }
         }
 
+        // Gain (Criterion C-09)
+        val gain = c.audio.gain.coerceIn(0.0f, 2.0f)
+        orchestrator.audioCapture.gain = gain
+        gainSlider.value = (gain * 100).toInt()
+        gainValueLabel.text = String.format(Locale.US, "%d%% (%.1fx)", gainSlider.value, gain)
+
         // Autostart
         autostartCheck.isSelected = c.autostart.enabled
         autoStartManager.setAutoStart(c.autostart.enabled)
@@ -2021,6 +2127,7 @@ class PreferencesDialog(
                     AudioSettings(
                         deviceName = orchestrator.selectedDevice?.id ?: "",
                         provider = if (isPortAudio) "PortAudio" else "JavaSound",
+                        gain = orchestrator.audioCapture.gain,
                     ),
                 engine =
                     EngineSettings(
@@ -2078,6 +2185,10 @@ class PreferencesDialog(
         miniAppBulb.updateState(greenActive, greenGlow, AppLocalization.tr("bulb.app.title"), AppLocalization.tr("bulb.app.active"))
 
         // 2. Update Voice Bulb & PTT Buttons
+        if (state == DictationState.IDLE || state == DictationState.PROCESSING) {
+            dashboardVuMeter.reset()
+        }
+
         when (state) {
             DictationState.IDLE -> {
                 val idleText = AppLocalization.tr("bulb.voice.idle")

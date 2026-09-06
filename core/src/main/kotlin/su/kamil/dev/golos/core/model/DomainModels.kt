@@ -98,3 +98,23 @@ data class InjectionConfig(
     val copyToClipboard: Boolean = false,
     val copyToClipboardIfNoField: Boolean = true,
 )
+
+/**
+ * Real-time audio warning categories (Criteria C-08, E-07).
+ */
+enum class AudioWarningType {
+    NONE,
+    SILENCE_MUTED,
+    CLIPPING,
+}
+
+/**
+ * Signal statistics computed for audio level indicators and clipping detection (Criteria C-07, C-08, E-07).
+ */
+data class AudioSignalStats(
+    val rms: Float = 0.0f,
+    val rmsDb: Float = -96.0f,
+    val peak: Float = 0.0f,
+    val peakDb: Float = -96.0f,
+    val isClipping: Boolean = false,
+)

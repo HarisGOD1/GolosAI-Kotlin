@@ -146,6 +146,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "Hold to Talk (Continuous press)",
                     "opt.trigger.toggle" to "Toggle On/Off (Press to start/stop)",
                     "label.trigger_mode" to "Hotkey Trigger Mode:",
+                    "label.input_gain" to "Microphone Gain:",
+                    "label.input_level" to "Audio Input Level:",
+                    "btn.test_mic" to "Test Mic",
+                    "btn.stop_test" to "Stop Test",
+                    "warning.silence" to "Microphone muted or volume too low",
+                    "warning.clipping" to "Audio clipping detected; lower input volume",
                 ),
             AppLanguage.FR to
                 mapOf(
@@ -252,6 +258,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "Maintenir pour parler",
                     "opt.trigger.toggle" to "Bascule Marche/Arrêt",
                     "label.trigger_mode" to "Mode de déclenchement :",
+                    "label.input_gain" to "Gain du microphone :",
+                    "label.input_level" to "Niveau d'entrée audio :",
+                    "btn.test_mic" to "Tester micro",
+                    "btn.stop_test" to "Arrêter test",
+                    "warning.silence" to "Microphone coupé ou volume trop bas",
+                    "warning.clipping" to "Écrêtage audio détecté ; baissez le volume",
                 ),
             AppLanguage.DE to
                 mapOf(
@@ -358,6 +370,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "Gedrückt halten zum Sprechen",
                     "opt.trigger.toggle" to "Umschalten Ein/Aus",
                     "label.trigger_mode" to "Auslösemodus:",
+                    "label.input_gain" to "Mikrofonverstärkung:",
+                    "label.input_level" to "Audioeingangspegel:",
+                    "btn.test_mic" to "Mikrofon testen",
+                    "btn.stop_test" to "Test beenden",
+                    "warning.silence" to "Mikrofon stummgeschaltet oder Pegel zu niedrig",
+                    "warning.clipping" to "Audioübersteuerung erkannt; Eingangspegel senken",
                 ),
             AppLanguage.RU to
                 mapOf(
@@ -464,6 +482,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "Удержание клавиши (Push-to-Talk)",
                     "opt.trigger.toggle" to "Переключатель вкл/выкл (Toggle)",
                     "label.trigger_mode" to "Режим активации:",
+                    "label.input_gain" to "Усиление микрофона:",
+                    "label.input_level" to "Уровень входного сигнала:",
+                    "btn.test_mic" to "Проверить микрофон",
+                    "btn.stop_test" to "Остановить проверку",
+                    "warning.silence" to "Микрофон отключен или сигнал слишком тихий",
+                    "warning.clipping" to "Обнаружен клиппинг звука; снизьте громкость",
                 ),
             AppLanguage.JP to
                 mapOf(
@@ -570,6 +594,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "長押しで通話 (ホールド)",
                     "opt.trigger.toggle" to "オン/オフ切り替え (トグル)",
                     "label.trigger_mode" to "トリガーモード:",
+                    "label.input_gain" to "マイクゲイン:",
+                    "label.input_level" to "音声入力レベル:",
+                    "btn.test_mic" to "マイクテスト",
+                    "btn.stop_test" to "テスト停止",
+                    "warning.silence" to "マイクがミュートまたは音量が小さすぎます",
+                    "warning.clipping" to "音割れ（クリッピング）を検出；音量を下げてください",
                 ),
             AppLanguage.CN to
                 mapOf(
@@ -676,6 +706,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "按住说话 (长按)",
                     "opt.trigger.toggle" to "开关切换 (点击开始/停止)",
                     "label.trigger_mode" to "触发模式:",
+                    "label.input_gain" to "麦克风增益:",
+                    "label.input_level" to "音频输入电平:",
+                    "btn.test_mic" to "测试麦克风",
+                    "btn.stop_test" to "停止测试",
+                    "warning.silence" to "麦克风静音或音量过低",
+                    "warning.clipping" to "检测到音频削波；请降低输入音量",
                 ),
             AppLanguage.TR to
                 mapOf(
@@ -782,6 +818,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "Konuşmak İçin Basılı Tut",
                     "opt.trigger.toggle" to "Aç/Kapat Geçişi",
                     "label.trigger_mode" to "Tetikleme Modu:",
+                    "label.input_gain" to "Mikrofon Kazancı:",
+                    "label.input_level" to "Ses Giriş Seviyesi:",
+                    "btn.test_mic" to "Mikrofonu Test Et",
+                    "btn.stop_test" to "Testi Durdur",
+                    "warning.silence" to "Mikrofon sessizde veya ses çok düşük",
+                    "warning.clipping" to "Ses kırpılması tespit edildi; giriş seviyesini düşürün",
                 ),
             AppLanguage.AR to
                 mapOf(
@@ -888,6 +930,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "اضغط مطولاً للتحدث",
                     "opt.trigger.toggle" to "تبديل تشغيل/إيقاف",
                     "label.trigger_mode" to "وضع التنشيط:",
+                    "label.input_gain" to "مستوى تضخيم الميكروفون:",
+                    "label.input_level" to "مستوى إدخال الصوت:",
+                    "btn.test_mic" to "اختبار الميكروفون",
+                    "btn.stop_test" to "إيقاف الاختبار",
+                    "warning.silence" to "الميكروفون مكتوم أو مستوى الصوت منخفض للغاية",
+                    "warning.clipping" to "تم اكتشاف تقطيع في الصوت؛ يرجى خفض مستوى الصوت",
                 ),
             AppLanguage.ES to
                 mapOf(
@@ -994,6 +1042,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "Mantener para hablar",
                     "opt.trigger.toggle" to "Alternar encendido/apagado",
                     "label.trigger_mode" to "Modo de activación:",
+                    "label.input_gain" to "Ganancia del micrófono:",
+                    "label.input_level" to "Nivel de entrada de audio:",
+                    "btn.test_mic" to "Probar micrófono",
+                    "btn.stop_test" to "Detener prueba",
+                    "warning.silence" to "Micrófono silenciado o volumen demasiado bajo",
+                    "warning.clipping" to "Saturación de audio detectada; baje el volumen",
                 ),
             AppLanguage.IT to
                 mapOf(
@@ -1100,6 +1154,12 @@ object AppLocalization {
                     "opt.trigger.hold" to "Tieni premuto per parlare",
                     "opt.trigger.toggle" to "Attiva/Disattiva",
                     "label.trigger_mode" to "Modalità attivazione:",
+                    "label.input_gain" to "Guadagno microfono:",
+                    "label.input_level" to "Livello ingresso audio:",
+                    "btn.test_mic" to "Testa microfono",
+                    "btn.stop_test" to "Interrompi test",
+                    "warning.silence" to "Microfono disattivato o volume troppo basso",
+                    "warning.clipping" to "Rilevato clipping audio; abbassare il volume",
                 ),
         )
 

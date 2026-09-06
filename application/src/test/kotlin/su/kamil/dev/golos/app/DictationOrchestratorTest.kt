@@ -6,6 +6,8 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import su.kamil.dev.golos.core.model.AudioChunk
 import su.kamil.dev.golos.core.model.AudioDevice
@@ -24,6 +26,8 @@ class DictationOrchestratorTest {
         var stopCount = 0
         var capturing = false
         var returnChunk: AudioChunk? = AudioChunk(ByteArray(16000) { 0x40 })
+        override var onAudioLevel: ((rmsDb: Float, peakDb: Float, isClipping: Boolean) -> Unit)? = null
+        override var gain: Float = 1.0f
 
         override fun getAvailableDevices(): List<AudioDevice> = emptyList()
 
@@ -248,5 +252,75 @@ class DictationOrchestratorTest {
             assertEquals(DictationState.IDLE, orchestrator.state.value)
             org.junit.jupiter.api.Assertions.assertFalse(fakeHotkeyHook.isRegistered)
             org.junit.jupiter.api.Assertions.assertFalse(fakeAudioCapture.isCapturing())
+        }
+
+    @Test
+    fun `test orchestrator audio test lifecycle - Criterion C-07`() =
+        runTest {
+            val stateMachine = DictationStateMachine()
+            val fakeAudioCapture = FakeAudioCapture()
+            val mockEngine = MockSpeechToTextEngine()
+            val fakeHotkeyHook = SimulatedHotkeyHook()
+            val fakeTextInjector = FakeTextInjector()
+
+            val orchestrator =
+                DictationOrchestrator(
+                    stateMachine = stateMachine,
+                    audioCapture = fakeAudioCapture,
+                    speechEngine = mockEngine,
+                    hotkeyHook = fakeHotkeyHook,
+                    textInjector = fakeTextInjector,
+                    scope = this,
+                )
+
+            var receivedDb = 0f
+            orchestrator.startAudioTest { rms, _, _ ->
+                receivedDb = rms
+            }
+            assertTrue(orchestrator.isTestingAudio())
+            assertTrue(fakeAudioCapture.capturing)
+
+            fakeAudioCapture.onAudioLevel?.invoke(-15.0f, -10.0f, false)
+            assertEquals(-15.0f, receivedDb)
+
+            orchestrator.stopAudioTest()
+            assertFalse(orchestrator.isTestingAudio())
+            assertFalse(fakeAudioCapture.capturing)
+        }
+
+    @Test
+    fun `test orchestrator silence and clipping warnings - Criteria C-08 and E-07`() =
+        runTest {
+            val stateMachine = DictationStateMachine()
+            val fakeAudioCapture = FakeAudioCapture()
+            val mockEngine = MockSpeechToTextEngine()
+            val fakeHotkeyHook = SimulatedHotkeyHook()
+            val fakeTextInjector = FakeTextInjector()
+
+            val orchestrator =
+                DictationOrchestrator(
+                    stateMachine = stateMachine,
+                    audioCapture = fakeAudioCapture,
+                    speechEngine = mockEngine,
+                    hotkeyHook = fakeHotkeyHook,
+                    textInjector = fakeTextInjector,
+                    scope = this,
+                )
+
+            var lastWarning = su.kamil.dev.golos.core.model.AudioWarningType.NONE
+            orchestrator.onAudioWarning = { lastWarning = it }
+
+            orchestrator.start()
+            fakeHotkeyHook.triggerKeyDown()
+            assertEquals(DictationState.RECORDING, orchestrator.state.value)
+
+            // Simulate clipping
+            fakeAudioCapture.onAudioLevel?.invoke(-5.0f, 0.0f, true)
+            assertEquals(su.kamil.dev.golos.core.model.AudioWarningType.CLIPPING, lastWarning)
+
+            fakeHotkeyHook.triggerKeyUp()
+            testScheduler.advanceUntilIdle()
+            assertEquals(su.kamil.dev.golos.core.model.AudioWarningType.NONE, lastWarning)
+            orchestrator.stop()
         }
 }

@@ -82,6 +82,18 @@ class PortAudioAudioCapture(
     private val isRunning = AtomicBoolean(false)
     private val isNativeAvailable = PortAudioLib.INSTANCE != null
 
+    override var gain: Float
+        get() = fallbackCapture.gain
+        set(value) {
+            fallbackCapture.gain = value
+        }
+
+    override var onAudioLevel: ((rmsDb: Float, peakDb: Float, isClipping: Boolean) -> Unit)?
+        get() = fallbackCapture.onAudioLevel
+        set(value) {
+            fallbackCapture.onAudioLevel = value
+        }
+
     init {
         if (isNativeAvailable) {
             try {

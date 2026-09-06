@@ -236,7 +236,7 @@
 
 ---
 
-### 26. Speech Efficiency Metrics & Statistics Engine (`EfficiencyMetricsHandler`) [Planned]
+### 26. Speech Efficiency Metrics & Statistics Engine (`EfficiencyMetricsHandler`) [Implemented]
 - **Core Architecture & Calculations**:
   - Introduce `EfficiencyMetricsHandler` service tracking per-replica and aggregate session metrics:
     1. **Audio Duration ($T_{audio}$)**: captured audio length in seconds and milliseconds.
@@ -281,7 +281,7 @@
 
 ---
 
-### 28. Single-Instance Application Lock & Mutex (`B-13`) [Planned]
+### 28. Single-Instance Application Lock & Mutex (`B-13`) [Implemented]
 - **Goal**: Running a second instance of GolosAI must not conflict with or crash the running instance; it must signal the first instance to come to the foreground and exit cleanly.
 - **Design**:
   - Local UNIX domain socket or file lock (`~/.cache/golos-ai/golos.lock` on Linux/macOS, named Mutex on Windows).
@@ -291,7 +291,7 @@
 
 ---
 
-### 29. Toggle Push-to-Talk Trigger Mode (`D-03`) [Planned]
+### 29. Toggle Push-to-Talk Trigger Mode (`D-03`) [Implemented]
 - **Goal**: Support alternate switch/toggle mode where first hotkey press begins recording and second hotkey press stops recording and triggers recognition.
 - **Design**:
   - Configuration option: `hotkey.triggerMode`: `HOLD_TO_TALK` (default) vs `TOGGLE_ON_OFF`.
@@ -301,14 +301,15 @@
 
 ---
 
-### 30. Live Audio Input Signal VU Meter & Silence / Clipping Warning (`C-07`, `C-08`, `E-07`) [Planned]
+### 30. Live Audio Input Signal VU Meter & Silence / Clipping Warning (`C-07`, `C-08`, `C-09`, `E-07`) [Implemented]
 - **Goal**: Real-time microphone input volume indicator in UI to prevent speaking into a muted or overloaded microphone.
 - **Design**:
   - Audio capture pipeline calculates rolling RMS dB level: $dB = 20 \log_{10}(RMS / RMS_{max})$.
   - Visual mini VU level meter bar on Dashboard and Audio settings tab.
   - Warning banner when input level is below -50 dB for >1.5s ("Microphone muted or volume too low").
   - Warning alert when signal exceeds 0 dB ("Audio clipping detected; lower input volume").
-- **Criteria Alignment**: `C-07`, `C-08`, `E-07`.
+  - Input gain adjustment (0% - 200%) and tanh soft-clipping saturation to handle overloaded audio.
+- **Criteria Alignment**: `C-07`, `C-08`, `C-09`, `E-07`.
 
 ---
 

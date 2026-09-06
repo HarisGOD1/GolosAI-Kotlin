@@ -66,6 +66,7 @@ data class InsertionSettings(
 data class AudioSettings(
     val deviceName: String = "",
     val provider: String = "JavaSound",
+    val gain: Float = 1.0f,
 )
 
 data class WhisperSettings(

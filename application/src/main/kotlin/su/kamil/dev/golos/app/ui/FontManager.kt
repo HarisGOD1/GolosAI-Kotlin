@@ -57,8 +57,8 @@ object FontManager {
                 ge.registerFont(it)
             }
             logger.info("Loaded MIT-licensed Hack font successfully.")
-        } catch (e: Exception) {
-            logger.warn("Could not load Hack font from resources: {}", e.message)
+        } catch (t: Throwable) {
+            logger.warn("Could not load Hack font from resources: {}", t.message)
         }
 
         hackRegularFont = (reg ?: Font(Font.MONOSPACED, Font.PLAIN, DEFAULT_SIZE.toInt())).deriveFont(Font.PLAIN, DEFAULT_SIZE)
@@ -134,31 +134,34 @@ object FontManager {
         candidates: List<String>,
         sample: String,
     ): String {
-        val fullSample = "$sample Whisper (F8) [Rel]"
-        for (candidate in candidates) {
-            if (candidate == Font.SANS_SERIF || availableFamilies.contains(candidate)) {
-                val f = Font(candidate, Font.PLAIN, 12)
-                if (f.canDisplayUpTo(fullSample) == -1) {
-                    return candidate
-                }
-            }
-        }
-        for (candidate in candidates) {
-            if (candidate == Font.SANS_SERIF || availableFamilies.contains(candidate)) {
-                val f = Font(candidate, Font.PLAIN, 12)
-                if (f.canDisplayUpTo(sample) == -1) {
-                    return candidate
-                }
-            }
-        }
         try {
-            val allFonts = GraphicsEnvironment.getLocalGraphicsEnvironment().allFonts
-            for (f in allFonts) {
-                if (f.canDisplayUpTo(fullSample) == -1) {
-                    return f.family
+            val fullSample = "$sample Whisper (F8) [Rel]"
+            for (candidate in candidates) {
+                if (candidate == Font.SANS_SERIF || availableFamilies.contains(candidate)) {
+                    val f = Font(candidate, Font.PLAIN, 12)
+                    if (f.canDisplayUpTo(fullSample) == -1) {
+                        return candidate
+                    }
                 }
             }
-        } catch (_: Exception) {
+            for (candidate in candidates) {
+                if (candidate == Font.SANS_SERIF || availableFamilies.contains(candidate)) {
+                    val f = Font(candidate, Font.PLAIN, 12)
+                    if (f.canDisplayUpTo(sample) == -1) {
+                        return candidate
+                    }
+                }
+            }
+            try {
+                val allFonts = GraphicsEnvironment.getLocalGraphicsEnvironment().allFonts
+                for (f in allFonts) {
+                    if (f.canDisplayUpTo(fullSample) == -1) {
+                        return f.family
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+        } catch (_: Throwable) {
         }
         return Font.SANS_SERIF
     }

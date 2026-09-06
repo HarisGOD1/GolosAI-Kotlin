@@ -1,6 +1,7 @@
 package su.kamil.dev.golos.system.audio
 
 import org.slf4j.LoggerFactory
+import su.kamil.dev.golos.core.audio.AudioSignalAnalyzer
 import su.kamil.dev.golos.core.model.AudioChunk
 import su.kamil.dev.golos.core.model.AudioDevice
 import su.kamil.dev.golos.core.ports.AudioCapturePort
@@ -26,6 +27,9 @@ class JavaSoundAudioCapture(
     private var captureThread: Thread? = null
     private var activeLine: TargetDataLine? = null
     private val bufferStream = ByteArrayOutputStream()
+
+    override var gain: Float = 1.0f
+    override var onAudioLevel: ((rmsDb: Float, peakDb: Float, isClipping: Boolean) -> Unit)? = null
 
     // 16-bit PCM, signed, little-endian
     private val audioFormat =
@@ -172,16 +176,22 @@ class JavaSoundAudioCapture(
                     val bytesRead = line.read(buffer, 0, buffer.size)
                     if (bytesRead > 0) {
                         val chunkBytes = buffer.copyOf(bytesRead)
-                        synchronized(bufferStream) {
-                            bufferStream.write(chunkBytes)
-                        }
-                        val chunk =
+                        var chunk =
                             AudioChunk(
                                 samples = chunkBytes,
                                 sampleRate = sampleRate.toInt(),
                                 channels = channels,
                                 bitsPerSample = sampleSizeInBits,
                             )
+                        if (gain != 1.0f || AudioSignalAnalyzer.hasClipping(chunk)) {
+                            chunk = AudioSignalAnalyzer.applyGainAndSoftClip(chunk, gain)
+                        }
+                        val stats = AudioSignalAnalyzer.analyzeSignal(chunk)
+                        onAudioLevel?.invoke(stats.rmsDb, stats.peakDb, stats.isClipping)
+
+                        synchronized(bufferStream) {
+                            bufferStream.write(chunk.samples)
+                        }
                         onChunkCaptured(chunk)
                     }
                 }
@@ -205,6 +215,7 @@ class JavaSoundAudioCapture(
         } finally {
             activeLine = null
             captureThread = null
+            onAudioLevel?.invoke(-96.0f, -96.0f, false)
         }
 
         val allBytes =

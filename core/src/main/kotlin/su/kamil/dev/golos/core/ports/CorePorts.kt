@@ -20,6 +20,14 @@ interface AudioCapturePort {
     fun stopCapture(): AudioChunk?
 
     fun isCapturing(): Boolean
+
+    var onAudioLevel: ((rmsDb: Float, peakDb: Float, isClipping: Boolean) -> Unit)?
+        get() = null
+        set(_) {}
+
+    var gain: Float
+        get() = 1.0f
+        set(_) {}
 }
 
 /**

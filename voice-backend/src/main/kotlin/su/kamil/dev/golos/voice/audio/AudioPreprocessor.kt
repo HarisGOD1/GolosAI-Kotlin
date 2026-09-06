@@ -1,10 +1,10 @@
 package su.kamil.dev.golos.voice.audio
 
+import su.kamil.dev.golos.core.audio.AudioSignalAnalyzer
 import su.kamil.dev.golos.core.model.AudioChunk
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sqrt
 
 /**
  * Preprocesses raw audio chunks for speech recognition engines:
@@ -56,15 +56,18 @@ object AudioPreprocessor {
      * Calculates the Root Mean Square (RMS) energy of the audio samples.
      * Value between 0.0 (silent) and 1.0 (maximum amplitude).
      */
-    fun calculateRms(chunk: AudioChunk): Float {
-        val floats = chunk.toNormalizedFloatArray()
-        if (floats.isEmpty()) return 0.0f
-        var sumSquares = 0.0
-        for (sample in floats) {
-            sumSquares += sample * sample
-        }
-        return sqrt(sumSquares / floats.size).toFloat()
-    }
+    fun calculateRms(chunk: AudioChunk): Float = AudioSignalAnalyzer.analyzeSignal(chunk).rms
+
+    fun rmsToDb(rms: Float): Float = AudioSignalAnalyzer.rmsToDb(rms)
+
+    fun analyzeSignal(chunk: AudioChunk): su.kamil.dev.golos.core.model.AudioSignalStats = AudioSignalAnalyzer.analyzeSignal(chunk)
+
+    fun applyGainAndSoftClip(
+        chunk: AudioChunk,
+        gain: Float,
+    ): AudioChunk = AudioSignalAnalyzer.applyGainAndSoftClip(chunk, gain)
+
+    fun hasClipping(chunk: AudioChunk): Boolean = AudioSignalAnalyzer.hasClipping(chunk)
 
     /**
      * Checks if the chunk contains audible speech based on RMS threshold.
