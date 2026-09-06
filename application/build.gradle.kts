@@ -46,11 +46,11 @@ tasks.register<Tar>("packageLinuxTarGz") {
     }
     from(rootProject.file("packaging/linux/install.sh")) {
         into("GolosAI")
-        fileMode = 493 // 0755
+        filePermissions { unix(493) } // 0755
     }
     from(rootProject.file("packaging/linux/uninstall.sh")) {
         into("GolosAI")
-        fileMode = 493 // 0755
+        filePermissions { unix(493) } // 0755
     }
     from(rootProject.file("README.md")) {
         into("GolosAI")
@@ -67,11 +67,11 @@ tasks.register<Zip>("packageMacOsZip") {
     }
     from(rootProject.file("packaging/macos/install.sh")) {
         into("GolosAI")
-        fileMode = 493 // 0755
+        filePermissions { unix(493) } // 0755
     }
     from(rootProject.file("packaging/macos/uninstall.sh")) {
         into("GolosAI")
-        fileMode = 493 // 0755
+        filePermissions { unix(493) } // 0755
     }
     from(rootProject.file("README.md")) {
         into("GolosAI")

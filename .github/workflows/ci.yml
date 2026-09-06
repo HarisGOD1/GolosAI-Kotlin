@@ -16,6 +16,9 @@ jobs:
       matrix:
         os: [ ubuntu-24.04, windows-latest, macos-15 ]
 
+    env:
+      JAVA_TOOL_OPTIONS: "-Djava.awt.headless=true"
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -41,7 +44,7 @@ jobs:
 
       - name: Assemble & Verify Reproducible Build Artifacts
         shell: bash
-        run: ./gradlew assemble build -x test --no-daemon
+        run: ./gradlew assemble build packageAllDistributions -x test --no-daemon
 
       - name: Upload JaCoCo Coverage Report
         if: runner.os == 'Linux'
