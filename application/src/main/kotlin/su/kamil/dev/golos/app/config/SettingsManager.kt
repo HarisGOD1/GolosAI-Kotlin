@@ -9,6 +9,7 @@ import su.kamil.dev.golos.core.model.EngineSettings
 import su.kamil.dev.golos.core.model.GolosConfig
 import su.kamil.dev.golos.core.model.HotkeySettings
 import su.kamil.dev.golos.core.model.InsertionSettings
+import su.kamil.dev.golos.core.model.PostProcessingSettings
 import su.kamil.dev.golos.core.model.WhisperSettings
 import java.io.File
 import java.io.FileReader
@@ -154,6 +155,17 @@ class SettingsManager(
                 linkedMapOf(
                     "enabled" to c.autostart.enabled,
                 ),
+            "postProcessing" to
+                linkedMapOf(
+                    "enabled" to c.postProcessing.enabled,
+                    "autoPunctuation" to c.postProcessing.autoPunctuation,
+                    "numberFormatting" to c.postProcessing.numberFormatting,
+                    "fillerWordsRemoval" to c.postProcessing.fillerWordsRemoval,
+                    "selfCorrection" to c.postProcessing.selfCorrection,
+                    "dictionaryEnabled" to c.postProcessing.dictionaryEnabled,
+                    "customDictionaryPath" to c.postProcessing.customDictionaryPath,
+                    "activeAppProfile" to c.postProcessing.activeAppProfile,
+                ),
         )
     }
 
@@ -213,6 +225,19 @@ class SettingsManager(
                 enabled = autoMap["enabled"] as? Boolean ?: false,
             )
 
+        val ppMap = map["postProcessing"] as? Map<String, Any> ?: emptyMap()
+        val postProcessing =
+            PostProcessingSettings(
+                enabled = ppMap["enabled"] as? Boolean ?: true,
+                autoPunctuation = ppMap["autoPunctuation"] as? Boolean ?: true,
+                numberFormatting = ppMap["numberFormatting"] as? Boolean ?: true,
+                fillerWordsRemoval = ppMap["fillerWordsRemoval"] as? Boolean ?: true,
+                selfCorrection = ppMap["selfCorrection"] as? Boolean ?: true,
+                dictionaryEnabled = ppMap["dictionaryEnabled"] as? Boolean ?: true,
+                customDictionaryPath = ppMap["customDictionaryPath"]?.toString() ?: "",
+                activeAppProfile = ppMap["activeAppProfile"]?.toString() ?: "AUTO",
+            )
+
         val uiLanguage = map["uiLanguage"]?.toString() ?: "en"
 
         return GolosConfig(
@@ -223,6 +248,7 @@ class SettingsManager(
             audio = audio,
             engine = engine,
             autostart = autostart,
+            postProcessing = postProcessing,
         )
     }
 }

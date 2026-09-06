@@ -343,19 +343,27 @@
 
 ---
 
-### 33. Active Window Context Detection & Application Profiles (`J-01` - `J-05`, `M-02`, `M-05`) [Planned]
+### 33. Active Window Context Detection & Application Profiles (`J-01` - `J-05`, `M-02`, `M-05`, `D-15`) [Implemented]
 - **Goal**: Automatically tailor recognition style to the active application and record app name in history.
-- **Design**:
-  - Query active window title and process identifier:
-    - Linux X11: `_NET_ACTIVE_WINDOW` via X11 / `xdotool`.
-    - Windows: `GetForegroundWindow` + `GetWindowText`.
-    - macOS: `NSWorkspace.shared.frontmostApplication`.
-  - Profiles:
-    - `Messenger` (Telegram, Slack): short messages, relaxed punctuation.
-    - `Code` (VS Code, IntelliJ, Terminal): identifier casing preservation, technical acronyms.
-    - `Mail` (Thunderbird, Outlook): formal paragraph structure, full punctuation.
-  - Record target application in `HistoryEntry` metadata for filtering.
-- **Criteria Alignment**: `J-01` to `J-05`, `M-02`, `M-05`.
+- **Implementation**:
+  - `ActiveWindowDetectorPort` & `ActiveWindowDetector`:
+    - Linux X11: native JNA calls (`XGetInputFocus`, `XFetchName`, `XFree`) with fallback to `xdotool getactivewindow getwindowname`.
+    - Windows: `User32.INSTANCE.GetForegroundWindow()` + `GetWindowText`.
+    - macOS: `osascript` query for frontmost application process name.
+    - Application profile heuristics mapping window titles and process names to `MESSENGER`, `CODE`, `MAIL`, or `GENERAL`.
+    - Test simulation support via `simulatedWindow`.
+  - Integration with `DictationOrchestrator`:
+    - Context captured at PTT press, delivered via `onTranscriptionWithContextCompleted` callback.
+    - Profile selection logic: manual profile override (`orchestrator.manualProfile`, `cycleManualProfile()`) takes precedence over auto-detected window profile (`D-15`, `J-04`, `J-05`).
+  - Integration with `HistoryManager`:
+    - `appName` and `profile` fields persisted in JSONL history records (`M-02`).
+    - Filtering by `appName` and `getUniqueAppNames()` (`M-05`).
+  - UI Integration (`PreferencesDialog`):
+    - Added Style Profile dropdown in General Settings tab for manual profile selection (`J-05`).
+    - Dynamic application filter dropdown (`historyAppFilterBox`) in History tab (`M-05`).
+    - History cards display target application name and profile tag badge (`M-02`).
+    - YAML persistence for `postProcessing.activeAppProfile`.
+- **Criteria Alignment**: `J-01` to `J-05`, `M-02`, `M-05`, `D-15`.
 
 ---
 

@@ -177,4 +177,78 @@ class SettingsAndHistoryTest {
         val reloaded = HistoryManager(tempHistoryFile)
         assertTrue(reloaded.getAll().isEmpty())
     }
+
+    @Test
+    fun `HistoryManager persists appName and profile and filters by app - Criteria M-02 and M-05`() {
+        val historyManager = HistoryManager(tempHistoryFile)
+        historyManager.addEntry(
+            text = "Telegram message",
+            durationMs = 500,
+            engine = "Whisper",
+            language = "ru",
+            appName = "Telegram",
+            profile = "MESSENGER",
+        )
+        historyManager.addEntry(
+            text = "Code commit",
+            durationMs = 900,
+            engine = "Whisper",
+            language = "en",
+            appName = "IntelliJ IDEA",
+            profile = "CODE",
+        )
+        historyManager.addEntry(
+            text = "Another Telegram message",
+            durationMs = 400,
+            engine = "Whisper",
+            language = "ru",
+            appName = "Telegram",
+            profile = "MESSENGER",
+        )
+
+        val all = historyManager.getAll()
+        assertEquals(3, all.size)
+        assertEquals("Telegram", all[0].appName)
+        assertEquals("MESSENGER", all[0].profile)
+
+        val uniqueApps = historyManager.getUniqueAppNames()
+        assertEquals(listOf("IntelliJ IDEA", "Telegram"), uniqueApps)
+
+        val telegramFiltered = historyManager.getFiltered(appName = "Telegram")
+        assertEquals(2, telegramFiltered.size)
+        assertTrue(telegramFiltered.all { it.appName == "Telegram" })
+
+        val codeFiltered = historyManager.getFiltered(appName = "IntelliJ IDEA")
+        assertEquals(1, codeFiltered.size)
+        assertEquals("Code commit", codeFiltered[0].text)
+
+        // Persistence test
+        val reloaded = HistoryManager(tempHistoryFile)
+        val reloadedAll = reloaded.getAll()
+        assertEquals(3, reloadedAll.size)
+        assertEquals("Telegram", reloadedAll[0].appName)
+        assertEquals("MESSENGER", reloadedAll[0].profile)
+        assertEquals("IntelliJ IDEA", reloadedAll[1].appName)
+        assertEquals("CODE", reloadedAll[1].profile)
+    }
+
+    @Test
+    fun `SettingsManager persists postProcessing activeAppProfile - Criterion J-05`() {
+        val manager = SettingsManager(tempConfigFile)
+        val config =
+            GolosConfig(
+                postProcessing =
+                    su.kamil.dev.golos.core.model.PostProcessingSettings(
+                        activeAppProfile = "MESSENGER",
+                    ),
+            )
+        manager.save(config)
+
+        val reloaded = manager.load()
+        assertEquals(
+            "MESSENGER",
+            reloaded.postProcessing.activeAppProfile,
+        )
+    }
 }
+

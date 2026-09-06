@@ -29,6 +29,8 @@ class DictationOrchestrator(
     var speechEngine: SpeechToTextEngine,
     val hotkeyHook: GlobalHotkeyHook,
     val textInjector: TextInjectorPort,
+    val activeWindowDetector: su.kamil.dev.golos.core.ports.ActiveWindowDetectorPort =
+        su.kamil.dev.golos.system.window.ActiveWindowDetector(),
     val metricsHandler: EfficiencyMetricsHandler = EfficiencyMetricsHandler(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
@@ -38,10 +40,42 @@ class DictationOrchestrator(
         private set
     var injectionConfig: su.kamil.dev.golos.core.model.InjectionConfig = su.kamil.dev.golos.core.model.InjectionConfig()
 
+    var manualProfile: su.kamil.dev.golos.core.model.ApplicationProfile? = null
+    var postProcessingSettings: su.kamil.dev.golos.core.model.PostProcessingSettings =
+        su.kamil.dev.golos.core.model.PostProcessingSettings()
+    var currentActiveWindow: su.kamil.dev.golos.core.model.ActiveWindowInfo =
+        su.kamil.dev.golos.core.model.ActiveWindowInfo()
+        private set
+
     val state: StateFlow<DictationState> = stateMachine.state
     var onTranscriptionCompleted: ((TranscriptionResult, SpeechToTextEngine) -> Unit)? = null
+    var onTranscriptionWithContextCompleted: (
+        (
+            result: TranscriptionResult,
+            engine: SpeechToTextEngine,
+            window: su.kamil.dev.golos.core.model.ActiveWindowInfo,
+            profile: su.kamil.dev.golos.core.model.ApplicationProfile,
+        ) -> Unit
+    )? = null
     var onAudioLevel: ((rmsDb: Float, peakDb: Float, isClipping: Boolean) -> Unit)? = null
     var onAudioWarning: ((su.kamil.dev.golos.core.model.AudioWarningType) -> Unit)? = null
+
+    fun getEffectiveProfile(): su.kamil.dev.golos.core.model.ApplicationProfile = manualProfile ?: currentActiveWindow.profile
+
+    fun cycleManualProfile(): su.kamil.dev.golos.core.model.ApplicationProfile? {
+        manualProfile =
+            when (manualProfile) {
+                null -> su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER
+                su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER ->
+                    su.kamil.dev.golos.core.model.ApplicationProfile.MAIL
+                su.kamil.dev.golos.core.model.ApplicationProfile.MAIL ->
+                    su.kamil.dev.golos.core.model.ApplicationProfile.CODE
+                su.kamil.dev.golos.core.model.ApplicationProfile.CODE ->
+                    su.kamil.dev.golos.core.model.ApplicationProfile.GENERAL
+                su.kamil.dev.golos.core.model.ApplicationProfile.GENERAL -> null
+            }
+        return manualProfile
+    }
 
     private var streamingJob: kotlinx.coroutines.Job? = null
     private val liveAudioStream = java.io.ByteArrayOutputStream()
@@ -84,6 +118,12 @@ class DictationOrchestrator(
     suspend fun transcribeFile(file: java.io.File): TranscriptionResult {
         logger.info("Transcribing file '{}' with engine '{}'...", file.name, speechEngine.displayName)
         val startTime = System.currentTimeMillis()
+        val effectiveProfile = getEffectiveProfile()
+        if (speechEngine is su.kamil.dev.golos.voice.engine.WhisperCppEngine) {
+            (speechEngine as su.kamil.dev.golos.voice.engine.WhisperCppEngine).activeProfile = effectiveProfile
+            (speechEngine as su.kamil.dev.golos.voice.engine.WhisperCppEngine).postProcessingSettings =
+                postProcessingSettings
+        }
         val result = speechEngine.transcribeFile(file)
         val latencyMs = System.currentTimeMillis() - startTime
         if (result.text.isNotBlank()) {
@@ -93,6 +133,12 @@ class DictationOrchestrator(
                 latencyMs = latencyMs,
             )
             onTranscriptionCompleted?.invoke(result, speechEngine)
+            onTranscriptionWithContextCompleted?.invoke(
+                result,
+                speechEngine,
+                currentActiveWindow,
+                effectiveProfile,
+            )
         }
         return result
     }
@@ -136,6 +182,13 @@ class DictationOrchestrator(
         if (stateMachine.startRecording()) {
             recordingStartTime.set(System.currentTimeMillis())
             silenceStartTime = 0L
+            currentActiveWindow = activeWindowDetector.detectActiveWindow()
+            logger.info(
+                "Active window context: '{}' ('{}'), effective profile: {}",
+                currentActiveWindow.appName,
+                currentActiveWindow.windowTitle,
+                getEffectiveProfile(),
+            )
             onAudioWarning?.invoke(su.kamil.dev.golos.core.model.AudioWarningType.NONE)
             logger.info("State changed -> RECORDING. Starting audio capture.")
             synchronized(liveAudioStream) {
@@ -248,6 +301,14 @@ class DictationOrchestrator(
                             speechEngine.displayName,
                         )
 
+                        val effectiveProfile = getEffectiveProfile()
+                        if (speechEngine is su.kamil.dev.golos.voice.engine.WhisperCppEngine) {
+                            (speechEngine as su.kamil.dev.golos.voice.engine.WhisperCppEngine).activeProfile =
+                                effectiveProfile
+                            (speechEngine as su.kamil.dev.golos.voice.engine.WhisperCppEngine).postProcessingSettings =
+                                postProcessingSettings
+                        }
+
                         val inferenceStart = System.currentTimeMillis()
                         val result = speechEngine.transcribe(recordedAudio)
                         val inferenceLatency = System.currentTimeMillis() - inferenceStart
@@ -267,6 +328,12 @@ class DictationOrchestrator(
                             )
 
                             onTranscriptionCompleted?.invoke(result, speechEngine)
+                            onTranscriptionWithContextCompleted?.invoke(
+                                result,
+                                speechEngine,
+                                currentActiveWindow,
+                                effectiveProfile,
+                            )
                             if (injectionConfig.timing == su.kamil.dev.golos.core.model.InjectionTiming.ON_THE_FLY) {
                                 val finalWords = result.text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
                                 val deltaText =

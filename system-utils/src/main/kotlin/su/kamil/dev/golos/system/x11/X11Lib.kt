@@ -3,10 +3,12 @@ package su.kamil.dev.golos.system.x11
 import com.sun.jna.Library
 import com.sun.jna.Native
 import com.sun.jna.Pointer
+import com.sun.jna.ptr.PointerByReference
 
 /**
  * JNA binding for X11 C library functions on Linux.
  */
+@Suppress("FunctionNaming", "FunctionParameterNaming", "TooManyFunctions")
 interface X11Lib : Library {
     companion object {
         val INSTANCE: X11Lib? =
@@ -112,4 +114,12 @@ interface X11Lib : Library {
         detectable: Boolean,
         supported_rtrn: Pointer?,
     ): Boolean
+
+    fun XFetchName(
+        display: Pointer?,
+        w: Long,
+        window_name_return: PointerByReference?,
+    ): Int
+
+    fun XFree(data: Pointer?): Int
 }

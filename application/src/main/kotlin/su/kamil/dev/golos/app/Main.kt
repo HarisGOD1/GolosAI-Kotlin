@@ -110,11 +110,14 @@ fun main() {
         )
 
     orchestrator.injectionConfig = config.insertion.toInjectionConfig()
-    orchestrator.onTranscriptionCompleted = { result, engine ->
+    orchestrator.postProcessingSettings = config.postProcessing
+    orchestrator.onTranscriptionWithContextCompleted = { result, engine, window, profile ->
         historyManager.addEntry(
             text = result.text,
             durationMs = result.durationMs,
             engine = engine.displayName,
+            appName = window.appName,
+            profile = profile.name,
         )
     }
 

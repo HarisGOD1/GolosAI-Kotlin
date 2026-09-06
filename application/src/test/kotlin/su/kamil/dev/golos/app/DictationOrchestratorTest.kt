@@ -323,4 +323,113 @@ class DictationOrchestratorTest {
             assertEquals(su.kamil.dev.golos.core.model.AudioWarningType.NONE, lastWarning)
             orchestrator.stop()
         }
+
+    private class FakeActiveWindowDetector(
+        var window: su.kamil.dev.golos.core.model.ActiveWindowInfo =
+            su.kamil.dev.golos.core.model.ActiveWindowInfo(),
+    ) : su.kamil.dev.golos.core.ports.ActiveWindowDetectorPort {
+        override fun detectActiveWindow(): su.kamil.dev.golos.core.model.ActiveWindowInfo = window
+    }
+
+    @Test
+    fun `test orchestrator captures active window and delivers context in callback`() =
+        runTest {
+            val stateMachine = DictationStateMachine()
+            val fakeAudioCapture = FakeAudioCapture()
+            val mockEngine =
+                MockSpeechToTextEngine(
+                    simulatedDelayMs = 0,
+                    predeterminedText = "Test context detection",
+                )
+            val fakeHotkeyHook = SimulatedHotkeyHook()
+            val fakeTextInjector = FakeTextInjector()
+            val fakeWindowDetector =
+                FakeActiveWindowDetector(
+                    su.kamil.dev.golos.core.model.ActiveWindowInfo(
+                        appName = "telegram",
+                        windowTitle = "General Chat - Telegram",
+                        profile = su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER,
+                    ),
+                )
+
+            val orchestrator =
+                DictationOrchestrator(
+                    stateMachine = stateMachine,
+                    audioCapture = fakeAudioCapture,
+                    speechEngine = mockEngine,
+                    hotkeyHook = fakeHotkeyHook,
+                    textInjector = fakeTextInjector,
+                    activeWindowDetector = fakeWindowDetector,
+                    scope = this,
+                )
+
+            var capturedWindow: su.kamil.dev.golos.core.model.ActiveWindowInfo? = null
+            var capturedProfile: su.kamil.dev.golos.core.model.ApplicationProfile? = null
+
+            orchestrator.onTranscriptionWithContextCompleted = { _, _, window, profile ->
+                capturedWindow = window
+                capturedProfile = profile
+            }
+
+            orchestrator.start()
+            fakeHotkeyHook.triggerKeyDown()
+            assertEquals(
+                su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER,
+                orchestrator.getEffectiveProfile(),
+            )
+            fakeHotkeyHook.triggerKeyUp()
+
+            testScheduler.advanceUntilIdle()
+            assertEquals(DictationState.IDLE, orchestrator.state.value)
+            assertEquals("telegram", capturedWindow?.appName)
+            assertEquals(su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER, capturedProfile)
+
+            orchestrator.stop()
+        }
+
+    @Test
+    fun `test manual profile overrides detected window profile and cycles correctly`() =
+        runTest {
+            val fakeWindowDetector =
+                FakeActiveWindowDetector(
+                    su.kamil.dev.golos.core.model.ActiveWindowInfo(
+                        appName = "telegram",
+                        windowTitle = "Telegram",
+                        profile = su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER,
+                    ),
+                )
+
+            val orchestrator =
+                DictationOrchestrator(
+                    stateMachine = DictationStateMachine(),
+                    audioCapture = FakeAudioCapture(),
+                    speechEngine = MockSpeechToTextEngine(),
+                    hotkeyHook = SimulatedHotkeyHook(),
+                    textInjector = FakeTextInjector(),
+                    activeWindowDetector = fakeWindowDetector,
+                    scope = this,
+                )
+
+            // Initially uses detected profile
+            orchestrator.onPushToTalkPressed()
+            assertEquals(
+                su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER,
+                orchestrator.getEffectiveProfile(),
+            )
+
+            // Set manual override
+            orchestrator.manualProfile = su.kamil.dev.golos.core.model.ApplicationProfile.CODE
+            assertEquals(
+                su.kamil.dev.golos.core.model.ApplicationProfile.CODE,
+                orchestrator.getEffectiveProfile(),
+            )
+
+            // Test cycling: CODE -> GENERAL -> AUTO (null) -> MESSENGER -> MAIL -> CODE
+            assertEquals(su.kamil.dev.golos.core.model.ApplicationProfile.GENERAL, orchestrator.cycleManualProfile())
+            assertEquals(null, orchestrator.cycleManualProfile())
+            assertEquals(su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER, orchestrator.cycleManualProfile())
+            assertEquals(su.kamil.dev.golos.core.model.ApplicationProfile.MAIL, orchestrator.cycleManualProfile())
+            assertEquals(su.kamil.dev.golos.core.model.ApplicationProfile.CODE, orchestrator.cycleManualProfile())
+        }
 }
+

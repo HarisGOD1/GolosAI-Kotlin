@@ -43,6 +43,8 @@ class HistoryManager(
         durationMs: Long,
         engine: String,
         language: String = "",
+        appName: String = "",
+        profile: String = "",
     ): HistoryEntry {
         val entry =
             HistoryEntry(
@@ -50,6 +52,8 @@ class HistoryManager(
                 durationMs = durationMs,
                 engine = engine,
                 language = language,
+                appName = appName,
+                profile = profile,
             )
         // Add to front of list (newest first)
         entries.add(0, entry)
@@ -58,6 +62,30 @@ class HistoryManager(
     }
 
     fun getAll(): List<HistoryEntry> = entries.toList()
+
+    fun getFiltered(
+        appName: String? = null,
+        query: String? = null,
+    ): List<HistoryEntry> {
+        return entries.filter { entry ->
+            val matchesApp =
+                appName.isNullOrBlank() ||
+                    appName.equals("All", ignoreCase = true) ||
+                    appName.equals("All Applications", ignoreCase = true) ||
+                    entry.appName.equals(appName, ignoreCase = true)
+            val matchesQuery =
+                query.isNullOrBlank() ||
+                    entry.text.contains(query, ignoreCase = true)
+            matchesApp && matchesQuery
+        }
+    }
+
+    fun getUniqueAppNames(): List<String> {
+        return entries.map { it.appName }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+    }
 
     @Synchronized
     fun clear() {
@@ -83,7 +111,8 @@ class HistoryManager(
 
             val json =
                 """{"id":"${entry.id}","ts":${entry.timestamp},"dur":${entry.durationMs},""" +
-                    """"engine":"${entry.engine}","lang":"${entry.language}","text":"$escapedText"}"""
+                    """"engine":"${entry.engine}","lang":"${entry.language}","app":"${entry.appName}",""" +
+                    """"profile":"${entry.profile}","text":"$escapedText"}"""
             historyFile.appendText(json + "\n")
         } catch (e: Exception) {
             logger.error("Failed to append history entry to disk", e)
@@ -93,18 +122,22 @@ class HistoryManager(
     @Suppress("UNCHECKED_CAST")
     private fun parseLine(line: String): HistoryEntry? {
         return try {
-            val map = yaml.load<Map<String, Any>>(line) ?: return null
-            val text = map["text"]?.toString() ?: ""
-            if (text.isEmpty()) return null
-
-            HistoryEntry(
-                id = map["id"]?.toString() ?: java.util.UUID.randomUUID().toString(),
-                timestamp = (map["ts"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                text = text,
-                durationMs = (map["dur"] as? Number)?.toLong() ?: 0L,
-                engine = map["engine"]?.toString() ?: "",
-                language = map["lang"]?.toString() ?: "",
-            )
+            val map = yaml.load<Map<String, Any>>(line)
+            val text = map?.get("text")?.toString() ?: ""
+            if (map != null && text.isNotEmpty()) {
+                HistoryEntry(
+                    id = map["id"]?.toString() ?: java.util.UUID.randomUUID().toString(),
+                    timestamp = (map["ts"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                    text = text,
+                    durationMs = (map["dur"] as? Number)?.toLong() ?: 0L,
+                    engine = map["engine"]?.toString() ?: "",
+                    language = map["lang"]?.toString() ?: "",
+                    appName = map["app"]?.toString() ?: map["appName"]?.toString() ?: "",
+                    profile = map["profile"]?.toString() ?: "",
+                )
+            } else {
+                null
+            }
         } catch (_: Exception) {
             null
         }

@@ -273,7 +273,20 @@ class PreferencesDialog(
     // History UI components
     private val historyListPanel = JPanel()
     private val historySearchField = JTextField(12)
+    private val historyAppFilterBox = JComboBox<String>()
     private val historyCountLabel = JLabel(String.format(AppLocalization.tr("label.history_total"), 0))
+
+    // Profile selector (Criteria J-04, J-05, D-15)
+    private val styleProfileCombo =
+        JComboBox(
+            arrayOf(
+                "Auto (Active Window Detection)",
+                "Messenger (Short replicas, chat)",
+                "Mail (Expanded paragraph, punctuation)",
+                "Code (Preserve identifiers, acronyms)",
+                "General (Standard dictation)",
+            ),
+        )
 
     private val coroutineScope = CoroutineScope(Dispatchers.Default + Job())
     private var availableDevices: List<AudioDevice> = emptyList()
@@ -1454,9 +1467,33 @@ class PreferencesDialog(
         }
         panel.add(autostartCheck, gbc)
 
-        // 12. Configuration Toolbar (Reset, Export, Import)
+        // 12. Speech Style Profile (Criteria J-04, J-05, D-15)
         gbc.gridx = 0
         gbc.gridy = 12
+        gbc.weightx = 0.32
+        val profileLabel = JLabel("Style Profile:")
+        profileLabel.font = FontManager.regular(FontManager.DEFAULT_SIZE)
+        panel.add(profileLabel, gbc)
+        gbc.gridx = 1
+        gbc.weightx = 0.68
+        styleProfileCombo.addActionListener {
+            if (isUpdatingLocalization) return@addActionListener
+            orchestrator.manualProfile =
+                when (styleProfileCombo.selectedIndex) {
+                    1 -> su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER
+                    2 -> su.kamil.dev.golos.core.model.ApplicationProfile.MAIL
+                    3 -> su.kamil.dev.golos.core.model.ApplicationProfile.CODE
+                    4 -> su.kamil.dev.golos.core.model.ApplicationProfile.GENERAL
+                    else -> null
+                }
+            renderStatus(orchestrator.state.value)
+            saveCurrentConfig()
+        }
+        panel.add(styleProfileCombo, gbc)
+
+        // 13. Configuration Toolbar (Reset, Export, Import)
+        gbc.gridx = 0
+        gbc.gridy = 13
         gbc.gridwidth = 2
         gbc.weightx = 1.0
         val configBar = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 4))
@@ -1707,8 +1744,16 @@ class PreferencesDialog(
         val searchBox = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
         searchBox.isOpaque = false
         searchBox.add(historySearchLabel)
-        historySearchField.columns = 12
+        historySearchField.columns = 10
         searchBox.add(historySearchField)
+        val appFilterLabel = JLabel("App:")
+        appFilterLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
+        searchBox.add(appFilterLabel)
+        historyAppFilterBox.prototypeDisplayValue = "All Applications"
+        historyAppFilterBox.addActionListener {
+            refreshHistoryList(historySearchField.text.trim())
+        }
+        searchBox.add(historyAppFilterBox)
         topBar.add(searchBox, BorderLayout.WEST)
 
         val rightBox = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0))
@@ -1765,11 +1810,28 @@ class PreferencesDialog(
     private fun refreshHistoryList(query: String = historySearchField.text.trim()) {
         historyListPanel.removeAll()
         val allEntries = historyManager.getAll()
-        val filtered =
-            if (query.isEmpty()) {
-                allEntries
+
+        // Update app filter dropdown items dynamically
+        val currentSelected = historyAppFilterBox.selectedItem as? String ?: "All Applications"
+        val uniqueApps = listOf("All Applications") + historyManager.getUniqueAppNames()
+        if (historyAppFilterBox.itemCount != uniqueApps.size) {
+            val model = DefaultComboBoxModel(uniqueApps.toTypedArray())
+            if (uniqueApps.contains(currentSelected)) {
+                model.selectedItem = currentSelected
             } else {
-                allEntries.filter { it.text.contains(query, ignoreCase = true) }
+                model.selectedItem = "All Applications"
+            }
+            historyAppFilterBox.model = model
+        }
+
+        val selectedApp = historyAppFilterBox.selectedItem as? String ?: "All Applications"
+        val filtered =
+            allEntries.filter { entry ->
+                val matchesApp =
+                    selectedApp == "All Applications" ||
+                        entry.appName.equals(selectedApp, ignoreCase = true)
+                val matchesQuery = query.isEmpty() || entry.text.contains(query, ignoreCase = true)
+                matchesApp && matchesQuery
             }
 
         historyCountLabel.text = "Showing ${filtered.size} of ${allEntries.size} entries"
@@ -1818,7 +1880,9 @@ class PreferencesDialog(
 
         val dateStr = dateFormat.format(Date(entry.timestamp))
         val durSec = String.format("%.1fs", entry.durationMs / 1000.0)
-        val infoLabel = JLabel("$dateStr  |  $durSec  |  ${entry.engine.ifEmpty { "GolosAI" }}")
+        val appTag = if (entry.appName.isNotBlank()) "  |  ${entry.appName}" else ""
+        val profileTag = if (entry.profile.isNotBlank()) " [${entry.profile}]" else ""
+        val infoLabel = JLabel("$dateStr  |  $durSec$appTag$profileTag  |  ${entry.engine.ifEmpty { "GolosAI" }}")
         infoLabel.font = FontManager.regular(FontManager.SMALL_SIZE)
         infoLabel.foreground = Color(100, 110, 120)
         topRow.add(infoLabel, BorderLayout.WEST)
@@ -2008,14 +2072,16 @@ class PreferencesDialog(
     }
 
     private fun wireHistoryListener() {
-        val oldCallback = orchestrator.onTranscriptionCompleted
-        orchestrator.onTranscriptionCompleted = { result, engine ->
-            oldCallback?.invoke(result, engine)
+        val oldCallback = orchestrator.onTranscriptionWithContextCompleted
+        orchestrator.onTranscriptionWithContextCompleted = { result, engine, window, profile ->
+            oldCallback?.invoke(result, engine, window, profile)
             if (oldCallback == null) {
                 historyManager.addEntry(
                     text = result.text,
                     durationMs = result.durationMs,
                     engine = engine.displayName,
+                    appName = window.appName,
+                    profile = profile.name,
                 )
             }
             SwingUtilities.invokeLater {
@@ -2056,6 +2122,25 @@ class PreferencesDialog(
         timingCombo.selectedIndex = if (ins.timing == InjectionTiming.ON_KEY_RELEASE) 0 else 1
         copyClipboardCheck.isSelected = ins.copyToClipboard
         fallbackClipboardCheck.isSelected = ins.copyToClipboardIfNoField
+
+        // Style Profile (Criteria J-04, J-05, D-15)
+        styleProfileCombo.selectedIndex =
+            when (c.postProcessing.activeAppProfile.uppercase()) {
+                "MESSENGER" -> 1
+                "MAIL" -> 2
+                "CODE" -> 3
+                "GENERAL" -> 4
+                else -> 0
+            }
+        orchestrator.manualProfile =
+            when (styleProfileCombo.selectedIndex) {
+                1 -> su.kamil.dev.golos.core.model.ApplicationProfile.MESSENGER
+                2 -> su.kamil.dev.golos.core.model.ApplicationProfile.MAIL
+                3 -> su.kamil.dev.golos.core.model.ApplicationProfile.CODE
+                4 -> su.kamil.dev.golos.core.model.ApplicationProfile.GENERAL
+                else -> null
+            }
+        orchestrator.postProcessingSettings = c.postProcessing
 
         // Audio Provider & Device
         val isPortAudio = c.audio.provider.equals("PortAudio", ignoreCase = true)
@@ -2116,6 +2201,14 @@ class PreferencesDialog(
         val selectedEngineId = if (orchestrator.speechEngine is WhisperCppEngine) "whisper-cpp" else "mock"
         val isPortAudio = audioProviderCombo.selectedIndex == 1
         val selectedLang = AppLanguage.entries.getOrNull(uiLanguageCombo.selectedIndex) ?: AppLanguage.EN
+        val currentProfileStr =
+            when (styleProfileCombo.selectedIndex) {
+                1 -> "MESSENGER"
+                2 -> "MAIL"
+                3 -> "CODE"
+                4 -> "GENERAL"
+                else -> "AUTO"
+            }
 
         val config =
             GolosConfig(
@@ -2145,6 +2238,10 @@ class PreferencesDialog(
                 autostart =
                     AutostartSettings(
                         enabled = autostartCheck.isSelected,
+                    ),
+                postProcessing =
+                    orchestrator.postProcessingSettings.copy(
+                        activeAppProfile = currentProfileStr,
                     ),
             )
         settingsManager.save(config)

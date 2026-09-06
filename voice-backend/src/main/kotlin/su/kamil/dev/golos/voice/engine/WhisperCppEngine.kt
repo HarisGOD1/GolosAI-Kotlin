@@ -42,7 +42,11 @@ class WhisperCppEngine(
             Result.success(Unit)
         }
 
-    private val postProcessor = su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor()
+    val postProcessor = su.kamil.dev.golos.voice.postprocess.SpeechPostProcessor()
+    var activeProfile: su.kamil.dev.golos.core.model.ApplicationProfile =
+        su.kamil.dev.golos.core.model.ApplicationProfile.GENERAL
+    var postProcessingSettings: su.kamil.dev.golos.core.model.PostProcessingSettings =
+        su.kamil.dev.golos.core.model.PostProcessingSettings()
 
     override suspend fun transcribe(audio: AudioChunk): TranscriptionResult =
         withContext(Dispatchers.IO) {
@@ -190,7 +194,12 @@ class WhisperCppEngine(
             }
 
             val cleanedText = cleanWhisperOutput(rawOutput)
-            val postProcessed = postProcessor.postProcess(cleanedText)
+            val postProcessed =
+                postProcessor.postProcess(
+                    cleanedText,
+                    profile = activeProfile,
+                    settings = postProcessingSettings,
+                )
             val duration = System.currentTimeMillis() - startTime
 
             TranscriptionResult(
