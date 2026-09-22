@@ -367,7 +367,9 @@ class VoiceBackendTest {
         try {
             val nestedSubdir = java.io.File(tempBinDir, "sherpa-onnx-v1.13.7-linux-x64-static/bin")
             nestedSubdir.mkdirs()
-            val fakeBin = java.io.File(nestedSubdir, "sherpa-onnx")
+            val isWin = System.getProperty("os.name").lowercase().contains("win")
+            val binName = if (isWin) "sherpa-onnx.exe" else "sherpa-onnx"
+            val fakeBin = java.io.File(nestedSubdir, binName)
             fakeBin.writeText("#!/bin/sh\nexit 0\n")
             fakeBin.setExecutable(true)
 
