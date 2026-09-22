@@ -18,7 +18,7 @@ subprojects {
     apply(plugin = "jacoco")
 
     group = "su.kamil.dev"
-    version = "1.0-SNAPSHOT"
+    version = "1.0.0"
 
     dependencyLocking {
         lockAllConfigurations()

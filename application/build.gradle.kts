@@ -22,6 +22,8 @@ tasks.register<Zip>("packageWindowsZip") {
     archiveBaseName.set("GolosAI-Windows-x64")
     from(layout.buildDirectory.dir("install/application")) {
         into("GolosAI")
+        exclude("bin/application")
+        exclude("**/*.sh")
     }
     from(rootProject.file("packaging/windows/install.bat")) {
         into("GolosAI")
@@ -43,6 +45,9 @@ tasks.register<Tar>("packageLinuxTarGz") {
     archiveExtension.set("tar.gz")
     from(layout.buildDirectory.dir("install/application")) {
         into("GolosAI")
+        exclude("**/*.bat")
+        exclude("**/*.dll")
+        exclude("**/*.exe")
     }
     from(rootProject.file("packaging/linux/install.sh")) {
         into("GolosAI")
@@ -64,6 +69,9 @@ tasks.register<Zip>("packageMacOsZip") {
     archiveBaseName.set("GolosAI-macOS-universal")
     from(layout.buildDirectory.dir("install/application")) {
         into("GolosAI")
+        exclude("**/*.bat")
+        exclude("**/*.dll")
+        exclude("**/*.exe")
     }
     from(rootProject.file("packaging/macos/install.sh")) {
         into("GolosAI")
